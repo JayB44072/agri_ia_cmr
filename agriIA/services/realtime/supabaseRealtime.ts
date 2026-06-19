@@ -7,7 +7,7 @@ export function subscribeToChannel(name: string, table: string, callback: (paylo
   if (channels[name]) return channels[name];
 
   const channel = supabase.channel(name)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, payload => {
+    .on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
       callback(payload);
     })
     .subscribe();

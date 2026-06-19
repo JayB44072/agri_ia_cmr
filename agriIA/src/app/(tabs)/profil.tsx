@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Animated, Modal, ActivityIndicator, Switch,
+  TextInput, Animated, Modal, ActivityIndicator, Switch, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '@/context/UserContext';
+import { useAuth } from '@/context/AuthContext';
+import { upsertProfile, ProfileRow } from '@/services/database/profiles';
+import { pickAndCompressImage, uploadProfileAvatar, getPublicUrl } from '@/services/storage/supabaseStorage';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GEMINI_KEY = 'YOUR_GEMINI_KEY'; // Remplacez par votre clé Gemini
+const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface StatFerme {
@@ -169,6 +172,7 @@ export default function ProfilScreen() {
   const isDark = scheme === 'dark';
   const colors = (isDark ? Colors.dark : Colors.light) as typeof Colors.light | typeof Colors.dark;
   const { profile, setProfile } = useUser();
+  const { user, signOut } = useAuth();
   const G = colors.primary;
 
   // Form state
@@ -181,6 +185,52 @@ export default function ProfilScreen() {
   const [nbParcelles, setNbParcelles] = useState(profile?.nbParcelles ?? '');
   const [objectif, setObjectif] = useState(profile?.objectif ?? '');
   const [experience, setExperience] = useState(profile?.experience ?? '');
+
+  const [avatarUri, setAvatarUri] = useState<string | null>(profile?.avatarUrl ?? null);
+
+  const handlePickAvatar = async () => {
+    const uri = await pickAndCompressImage();
+    if (!uri) return;
+
+    setLoadingIA(true);
+    const fileName = `${user?.id || 'anonymous'}_${Date.now()}.jpg`;
+    const { data, error } = await uploadProfileAvatar(uri, fileName);
+    if (error) {
+      setLoadingIA(false);
+      alert("Erreur de téléversement : " + error.message);
+      return;
+    }
+
+    const { data: urlData } = await getPublicUrl('profiles', fileName);
+    const publicUrl = urlData?.publicUrl || '';
+    
+    if (user) {
+      await upsertProfile({ id: user.id, avatar_url: publicUrl });
+    }
+
+    setAvatarUri(publicUrl);
+    if (profile) {
+      setProfile({
+        ...profile,
+        avatarUrl: publicUrl,
+      });
+    } else {
+      setProfile({
+        nom: nom || '',
+        ville: ville || '',
+        region: region || '',
+        zoneClimatique: zoneClimatique || '',
+        cultures: cultures || [],
+        superficie: superficie || '',
+        nbParcelles: nbParcelles || '',
+        objectif: objectif || '',
+        experience: experience || '',
+        defis: [],
+        avatarUrl: publicUrl,
+      });
+    }
+    setLoadingIA(false);
+  };
 
   const [analyse, setAnalyse] = useState<AnalyseIA | null>(null);
   const [loadingIA, setLoadingIA] = useState(false);
@@ -206,8 +256,42 @@ export default function ProfilScreen() {
     setLoadingIA(false);
   }
 
-  function sauvegarder() {
-    const newProfile = { nom, ville, region, zoneClimatique, cultures, superficie, nbParcelles, objectif, experience, defis: [] };
+  async function sauvegarder() {
+    if (!user) return;
+    const updatedProfileRow: Partial<ProfileRow> = {
+      id: user.id,
+      full_name: nom,
+      city: ville,
+      region,
+      climate_zone: zoneClimatique,
+      crops: cultures,
+      superficie,
+      nb_parcelles: nbParcelles,
+      experience,
+      objectives: objectif,
+    };
+
+    setLoadingIA(true);
+    const { error: upsertError } = await upsertProfile(updatedProfileRow);
+    setLoadingIA(false);
+
+    if (upsertError) {
+      alert("Erreur de sauvegarde: " + upsertError.message);
+      return;
+    }
+
+    const newProfile = {
+      nom,
+      ville,
+      region,
+      zoneClimatique,
+      cultures,
+      superficie,
+      nbParcelles,
+      objectif,
+      experience,
+      defis: profile?.defis || [],
+    };
     setProfile(newProfile);
     setEditMode(false);
     chargerAnalyse();
@@ -232,9 +316,16 @@ export default function ProfilScreen() {
 
         {/* ── Header avatar ── */}
         <Animated.View style={[s.header, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0,1], outputRange: [-20,0] }) }] }]}>
-          <View style={[s.avatar, { backgroundColor: `${G}20` }]}>
-            <Text style={s.avatarEmoji}>👨‍🌾</Text>
-          </View>
+          <TouchableOpacity onPress={handlePickAvatar} style={[s.avatar, { backgroundColor: `${G}20` }]} activeOpacity={0.85}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={s.avatarImage} />
+            ) : (
+              <Text style={s.avatarEmoji}>👨‍🌾</Text>
+            )}
+            <View style={s.avatarEditBadge}>
+              <Ionicons name="camera" size={10} color="#fff" />
+            </View>
+          </TouchableOpacity>
           <View style={s.headerInfo}>
             <Text style={[s.headerNom, { color: colors.text }]}>{nom || 'Mon Profil Agriculteur'}</Text>
             {ville && <View style={s.headerLocRow}>
@@ -436,7 +527,7 @@ export default function ProfilScreen() {
               <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[s.settingsRow, s.settingsBtn]}>
+            <TouchableOpacity style={[s.settingsRow, s.settingsBtn]} onPress={() => signOut()}>
               <View style={[s.settingsIcon, { backgroundColor: `${colors.danger}15` }]}>
                 <Ionicons name="log-out-outline" size={16} color={colors.danger} />
               </View>
@@ -457,8 +548,10 @@ const s = StyleSheet.create({
   content: { paddingHorizontal: Spacing.md, paddingTop: 16 },
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
-  avatar: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   avatarEmoji: { fontSize: 36 },
+  avatarImage: { width: 68, height: 68, borderRadius: 34 },
+  avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#22c55e', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#fff' },
   headerInfo: { flex: 1, gap: 3 },
   headerNom: { fontSize: 18, fontWeight: '900' },
   headerLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },

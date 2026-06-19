@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useUser, UserProfile } from '@/context/UserContext';
-import { createProfileIfMissing, getProfileById, ProfileRow } from '@/services/database/profiles';
+import { createProfileIfMissing, getProfileById, upsertProfile, ProfileRow } from '@/services/database/profiles';
 import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut as authSignOut, resetPassword as authResetPassword } from '@/services/auth/supabaseAuth';
 
 export interface AuthContextType {
@@ -10,7 +10,7 @@ export interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, fullName?: string, profileData?: Partial<ProfileRow>) => Promise<{ error: any | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signInWithGoogle: () => Promise<{ url?: string | null; error: AuthError | null }>;
   signOut: () => Promise<{ error: AuthError | null }>;
@@ -31,6 +31,7 @@ function mapProfileRowToUserProfile(row: ProfileRow): UserProfile {
     objectif: row.objectives ?? '',
     experience: row.experience ?? '',
     defis: [],
+    avatarUrl: row.avatar_url,
   };
 }
 
@@ -103,10 +104,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
+  const signUp = async (email: string, password: string, fullName?: string, profileData?: Partial<ProfileRow>) => {
     setError(null);
-    const { error: signUpError } = await signUpWithEmail({ email, password, fullName });
-    return { error: signUpError };
+    const { result, error: signUpError } = await signUpWithEmail({ email, password, fullName });
+    if (signUpError) return { error: signUpError };
+
+    const authUser = result?.user;
+    if (authUser && profileData) {
+      const fullProfile: Partial<ProfileRow> = {
+        ...profileData,
+        id: authUser.id,
+        full_name: fullName || authUser.user_metadata?.full_name || authUser.email || '',
+        created_at: new Date().toISOString(),
+      };
+      const { error: upsertError } = await upsertProfile(fullProfile);
+      if (upsertError) {
+        return { error: upsertError };
+      }
+    }
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {
