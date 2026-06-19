@@ -381,14 +381,24 @@ export default function Register(): React.JSX.Element {
   const prevStep = () => { setError(''); if (step > 0) setStep(s => s - 1); };
 
   const handleSubmit = () => {
+    setError('');
+    if (!validateStep()) return;
     setLoading(true);
-    setProfile({
-      nom: form.nom, ville: form.ville, region: form.region,
-      zoneClimatique: form.zoneClimatique, cultures: form.cultures,
-      superficie: form.superficie, nbParcelles: form.nbParcelles,
-      objectif: form.objectif, experience: form.experience, defis: form.defis,
-    });
-    setTimeout(() => { setLoading(false); router.replace('/(tabs)'); }, 2000);
+    try {
+      setProfile({
+        nom: form.nom, ville: form.ville, region: form.region,
+        zoneClimatique: form.zoneClimatique, cultures: form.cultures,
+        superficie: form.superficie, nbParcelles: form.nbParcelles,
+        objectif: form.objectif, experience: form.experience, defis: form.defis,
+      });
+      // TODO: replace with real registration API call
+      setTimeout(() => { setLoading(false); router.replace('/(tabs)'); }, 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      console.warn('[Register] Échec :', msg);
+      setError("Erreur lors de l'inscription. Veuillez réessayer.");
+      setLoading(false);
+    }
   };
 
   const STEP_TITLES = [

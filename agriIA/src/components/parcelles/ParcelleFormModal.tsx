@@ -92,22 +92,30 @@ export default function ParcelleFormModal({ visible, parcelle, onClose, onSave }
     setError('');
     if (!validate()) return;
     setLoading(true);
+    // TODO: replace with real API call
     setTimeout(() => {
-      onSave({
-        nom:         form.nom.trim(),
-        culture:     form.culture,
-        emoji:       EMOJIS_CULTURE[form.culture] ?? '🌱',
-        surface:     Number(form.surface),   // ← surface
-        typeSol:     form.sol || 'Argileux',
-        localisation: {
-          ville:  form.ville,
-          region: form.region,
-          lat:    3.8 + Math.random() * 0.5,
-          lng:    11.5 + Math.random() * 0.5,
-        },
-      });
-      setLoading(false);
-      onClose();
+      try {
+        onSave({
+          nom:         form.nom.trim(),
+          culture:     form.culture,
+          emoji:       EMOJIS_CULTURE[form.culture] ?? '🌱',
+          surface:     Number(form.surface),
+          typeSol:     form.sol || 'Argileux',
+          localisation: {
+            ville:  form.ville,
+            region: form.region,
+            lat:    3.8 + Math.random() * 0.5,
+            lng:    11.5 + Math.random() * 0.5,
+          },
+        });
+        onClose();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+        console.warn('[ParcelleForm] Échec de la sauvegarde :', msg);
+        setError('Erreur lors de la sauvegarde. Veuillez réessayer.');
+      } finally {
+        setLoading(false);
+      }
     }, 1200);
   };
 
