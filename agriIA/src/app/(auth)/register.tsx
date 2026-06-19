@@ -366,8 +366,12 @@ export default function Register(): React.JSX.Element {
     setError('');
     if (step === 0) {
       if (!form.nom || !form.email || !form.password || !form.confirmPassword) { setError('Veuillez remplir tous les champs.'); return false; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) { setError('Veuillez entrer une adresse e-mail valide.'); return false; }
       if (form.password !== form.confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return false; }
-      if (form.password.length < 6) { setError('Le mot de passe doit contenir au moins 6 caractères.'); return false; }
+      if (form.password.length < 8) { setError('Le mot de passe doit contenir au moins 8 caractères.'); return false; }
+      if (!/[A-Z]/.test(form.password)) { setError('Le mot de passe doit contenir au moins une majuscule.'); return false; }
+      if (!/[a-z]/.test(form.password)) { setError('Le mot de passe doit contenir au moins une minuscule.'); return false; }
+      if (!/[0-9]/.test(form.password)) { setError('Le mot de passe doit contenir au moins un chiffre.'); return false; }
     }
     if (step === 1) {
       if (!form.ville)          { setError('Veuillez sélectionner votre ville.');           return false; }
