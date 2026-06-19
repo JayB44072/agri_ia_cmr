@@ -4,8 +4,7 @@ import {
   Animated, Dimensions, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Radius, useThemeColors } from '@/constants/theme';
 import { EVOLUTION, EvolutionPoint } from '@/components/data/mockData';
 import Card from '@/components/ui/Card';
 
@@ -71,8 +70,7 @@ function ChartLine({ data, culture, w, h, minV, maxV, animated: isAnim }: {
   data: EvolutionPoint[]; culture: string;
   w: number; h: number; minV: number; maxV: number; animated?: boolean;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const cfg    = CULTURE_CONFIG[culture];
   const values = data.map(d => (d as any)[culture] as number);
   const range  = maxV - minV || 1;
@@ -170,8 +168,7 @@ const ct = StyleSheet.create({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 export default function EvolutionChart(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const data   = useLiveEvolution(5000);
 
   const [activeCultures, setActiveCultures] = useState<Set<string>>(

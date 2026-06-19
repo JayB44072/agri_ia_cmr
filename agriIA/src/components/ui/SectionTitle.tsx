@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { useThemeColors } from '@/constants/theme';
 
 interface SectionTitleProps {
   title: string;
@@ -10,8 +9,7 @@ interface SectionTitleProps {
 }
 
 export default function SectionTitle({ title, actionLabel, onAction }: SectionTitleProps): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
 
   return (
     <View style={s.row}>

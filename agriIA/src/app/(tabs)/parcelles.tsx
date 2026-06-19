@@ -3,9 +3,8 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Animated, RefreshControl, StatusBar,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
+import { Colors, Spacing, Radius, Shadows, useThemeColors } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PARCELLES_INIT, Parcelle, EMOJIS_CULTURE, StatutParcelle } from '@/components/data/parcellesData';
@@ -75,9 +74,7 @@ function mapPlotRowToParcelle(row: PlotRow): Parcelle {
 type FilterType = 'toutes' | 'ok' | 'warning' | 'critical';
 
 export default function ParcellesScreen(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const dark   = scheme === 'dark';
-  const colors = Colors[dark ? 'dark' : 'light'];
+  const { colors, isDark: dark } = useThemeColors();
   const insets = useSafeAreaInsets();
   const G      = Colors.splash.green;
 

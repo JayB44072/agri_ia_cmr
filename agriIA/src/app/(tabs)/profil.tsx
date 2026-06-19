@@ -4,16 +4,13 @@ import {
   TextInput, Animated, Modal, ActivityIndicator, Switch, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Spacing, Radius, useThemeColors } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
 import { upsertProfile, ProfileRow } from '@/services/database/profiles';
 import { pickAndCompressImage, uploadProfileAvatar, getPublicUrl } from '@/services/storage/supabaseStorage';
-
-// ── Config ────────────────────────────────────────────────────────────────────
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+import { callGemini } from '@/lib/gemini';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface StatFerme {
@@ -35,6 +32,14 @@ const OBJECTIFS = ['Augmenter mes revenus', 'Nourrir ma famille', 'Exporter mes 
 const NIVEAUX_EXP = ['Débutant (< 2 ans)', 'Intermédiaire (2-5 ans)', 'Confirmé (5-10 ans)', 'Expert (> 10 ans)'];
 
 // ── Gemini analyse profil ─────────────────────────────────────────────────────
+const ANALYSE_FALLBACK: AnalyseIA = {
+  score: 68,
+  resume: 'Profil agriculteur équilibré avec bon potentiel de développement.',
+  pointsForts: ['Diversification des cultures', 'Bonne connaissance du terrain local'],
+  pointsAmeliorations: ['Adoption de techniques modernes d\'irrigation', 'Gestion des sols à améliorer'],
+  prochainsPas: ['Réaliser une analyse de sol complète', 'Rejoindre une coopérative agricole', 'Explorer les marchés d\'export'],
+};
+
 async function analyserProfil(profile: any): Promise<AnalyseIA> {
   const prompt = `Tu es un expert en agriculture africaine et développement rural.
 Voici le profil d'un agriculteur camerounais :
@@ -56,29 +61,7 @@ Réponds UNIQUEMENT en JSON valide (sans markdown) :
   "prochainsPas": ["Action concrète 1", "Action concrète 2", "Action concrète 3"]
 }`;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return {
-      score: 68,
-      resume: 'Profil agriculteur équilibré avec bon potentiel de développement.',
-      pointsForts: ['Diversification des cultures', 'Bonne connaissance du terrain local'],
-      pointsAmeliorations: ['Adoption de techniques modernes d\'irrigation', 'Gestion des sols à améliorer'],
-      prochainsPas: ['Réaliser une analyse de sol complète', 'Rejoindre une coopérative agricole', 'Explorer les marchés d\'export'],
-    };
-  }
+  return callGemini<AnalyseIA>(prompt, ANALYSE_FALLBACK);
 }
 
 // ── Composant Sélecteur multiple ──────────────────────────────────────────────
@@ -168,9 +151,7 @@ const sb = StyleSheet.create({
 
 // ── Écran principal ───────────────────────────────────────────────────────────
 export default function ProfilScreen() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const colors = (isDark ? Colors.dark : Colors.light) as typeof Colors.light | typeof Colors.dark;
+  const { colors, isDark } = useThemeColors();
   const { profile, setProfile } = useUser();
   const { user, signOut } = useAuth();
   const G = colors.primary;
@@ -236,7 +217,7 @@ export default function ProfilScreen() {
   const [loadingIA, setLoadingIA] = useState(false);
   const [editMode, setEditMode] = useState(!profile);
   const [notifs, setNotifs] = useState(true);
-  const [darkMode, setDarkMode] = useState(scheme === 'dark');
+  const [darkMode, setDarkMode] = useState(isDark);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
   const scoreAnim = useRef(new Animated.Value(0)).current;

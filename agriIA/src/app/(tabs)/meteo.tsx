@@ -4,14 +4,15 @@ import {
   Animated, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Spacing, Radius, useThemeColors } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { callGemini } from '@/lib/gemini';
+import { getUVColor, getUVLabel } from '@/lib/uv';
+import LiveBadge from '@/components/ui/LiveBadge';
 
 // ── Config APIs ───────────────────────────────────────────────────────────────
 // OpenWeatherMap (gratuit 1000 req/jour) : https://openweathermap.org/api
 const OWM_KEY = 'YOUR_OWM_KEY'; // Remplacez par votre clé OpenWeatherMap
-const GEMINI_KEY = 'YOUR_GEMINI_KEY'; // Remplacez par votre clé Gemini
 
 // Coordonnées Yaoundé, Cameroun
 const LAT = 3.848;
@@ -153,27 +154,13 @@ Donne 3 conseils agricoles pratiques et concis adaptés à ces conditions.
 Réponds UNIQUEMENT en JSON valide (sans markdown) :
 [{"type":"arrosage|traitement|recolte|semis","titre":"...","texte":"...","emoji":"...","couleur":"#hexcode"}]`;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [
-      { type: 'arrosage', titre: 'Arrosage conseillé', texte: `Humidité à ${meteo.humidite}%. ${meteo.humidite < 65 ? 'Irriguez vos cultures sensibles.' : 'Arrosage non urgent.'}`, emoji: '💧', couleur: '#3498db' },
-      { type: 'traitement', titre: 'Traitements phytosanitaires', texte: `${meteo.vent < 15 ? 'Vent faible — bonne conditions pour les traitements.' : 'Vent fort — évitez les traitements aériens.'}`, emoji: '🌿', couleur: '#27ae60' },
-      { type: 'recolte', titre: 'Fenêtre de récolte', texte: `${meteo.pluie < 30 ? 'Bonne fenêtre pour récolter et sécher vos cultures.' : 'Pluies probables — évitez la récolte aujourd\'hui.'}`, emoji: '🌾', couleur: '#f59e0b' },
-    ];
-  }
+  const fallback: ConseilAgri[] = [
+    { type: 'arrosage', titre: 'Arrosage conseillé', texte: `Humidité à ${meteo.humidite}%. ${meteo.humidite < 65 ? 'Irriguez vos cultures sensibles.' : 'Arrosage non urgent.'}`, emoji: '💧', couleur: '#3498db' },
+    { type: 'traitement', titre: 'Traitements phytosanitaires', texte: `${meteo.vent < 15 ? 'Vent faible — bonne conditions pour les traitements.' : 'Vent fort — évitez les traitements aériens.'}`, emoji: '🌿', couleur: '#27ae60' },
+    { type: 'recolte', titre: 'Fenêtre de récolte', texte: `${meteo.pluie < 30 ? 'Bonne fenêtre pour récolter et sécher vos cultures.' : 'Pluies probables — évitez la récolte aujourd\'hui.'}`, emoji: '🌾', couleur: '#f59e0b' },
+  ];
+
+  return callGemini<ConseilAgri[]>(prompt, fallback);
 }
 
 // ── Composants ────────────────────────────────────────────────────────────────
@@ -240,8 +227,8 @@ const pi = StyleSheet.create({
 
 // ── Barre UV ──────────────────────────────────────────────────────────────────
 function UVBar({ uv, colors }: { uv: number; colors: typeof Colors.light | typeof Colors.dark }) {
-  const uvColor = uv <= 2 ? colors.success : uv <= 5 ? '#f5a623' : uv <= 7 ? '#e67e22' : colors.danger;
-  const uvLabel = uv <= 2 ? 'Faible' : uv <= 5 ? 'Modéré' : uv <= 7 ? 'Élevé' : 'Très élevé';
+  const uvColor = getUVColor(uv);
+  const uvLabel = getUVLabel(uv);
   const pct = Math.min(uv / 11, 1);
   return (
     <View style={uv_s.row}>
@@ -266,9 +253,7 @@ const uv_s = StyleSheet.create({
 
 // ── Écran principal ───────────────────────────────────────────────────────────
 export default function MeteoScreen() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const colors = (isDark ? Colors.dark : Colors.light) as typeof Colors.light | typeof Colors.dark;
+  const { colors } = useThemeColors();
   const G = colors.primary;
 
   const [meteo, setMeteo] = useState<WeatherData>(METEO_FALLBACK);
@@ -338,10 +323,7 @@ export default function MeteoScreen() {
               <Text style={[s.loc, { color: colors.textSecondary }]}>{VILLE}</Text>
             </View>
           </View>
-          <View style={[s.livePill, { backgroundColor: `${G}15` }]}>
-            <Animated.View style={[s.liveDot, { backgroundColor: G }]} />
-            <Text style={[s.liveLabel, { color: G }]}>LIVE</Text>
-          </View>
+          <LiveBadge color={G} />
         </View>
 
         {/* Onglets */}
@@ -539,10 +521,6 @@ const s = StyleSheet.create({
   titre: { fontSize: 22, fontWeight: '900' },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   loc: { fontSize: 12 },
-  livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-
   onglets: { flexDirection: 'row', borderRadius: 12, padding: 3, gap: 2 },
   onglet: { flex: 1, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
   ongletText: { fontSize: 12 },

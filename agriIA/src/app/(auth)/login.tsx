@@ -8,6 +8,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { AuthBackground } from '@/components/ui/AuthBackground';
+import ErrorBox from '@/components/ui/ErrorBox';
 
 const C = Colors.light;
 const G = Colors.splash.green;
@@ -62,12 +64,7 @@ export default function Login(): React.JSX.Element {
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* ── Formes vertes en arrière-plan ── */}
-      <View style={s.haloTopLeft} />
-      <View style={s.haloTopRight} />
-      <View style={s.haloBottomRight} />
-      <View style={s.haloBottomLeft} />
-      <View style={s.haloCenter} />
+      <AuthBackground variant="login" />
 
       <ScrollView
         contentContainerStyle={s.scroll}
@@ -130,12 +127,7 @@ export default function Login(): React.JSX.Element {
           </TouchableOpacity>
 
           {/* Erreur */}
-          {error !== '' && (
-            <View style={s.errorBox}>
-              <Ionicons name="warning-outline" size={14} color="#e74c3c" style={{ marginRight: 6 }} />
-              <Text style={s.errorText}>{error}</Text>
-            </View>
-          )}
+          <ErrorBox message={error} />
 
           {/* Bouton connexion */}
           <TouchableOpacity
@@ -198,33 +190,6 @@ export default function Login(): React.JSX.Element {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#ffffff' },
 
-  // ── Halos circulaires ──────────────────────────────────────────────────────
-  haloTopLeft:    {
-    position: 'absolute', width: 320, height: 320, borderRadius: 160,
-    backgroundColor: 'rgba(60,185,90,0.09)',
-    top: -140, left: -100,
-  },
-  haloTopRight:   {
-    position: 'absolute', width: 200, height: 200, borderRadius: 100,
-    backgroundColor: 'rgba(60,185,90,0.07)',
-    top: -60, right: -60,
-  },
-  haloBottomRight: {
-    position: 'absolute', width: 260, height: 260, borderRadius: 130,
-    backgroundColor: 'rgba(60,185,90,0.08)',
-    bottom: -100, right: -80,
-  },
-  haloBottomLeft:  {
-    position: 'absolute', width: 160, height: 160, borderRadius: 80,
-    backgroundColor: 'rgba(60,185,90,0.06)',
-    bottom: 60, left: -60,
-  },
-  haloCenter:     {
-    position: 'absolute', width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(60,185,90,0.05)',
-    top: '42%', right: -30,
-  },
-
   // ── Contenu ────────────────────────────────────────────────────────────────
   scroll: {
     flexGrow: 1, alignItems: 'center',
@@ -268,14 +233,6 @@ const s = StyleSheet.create({
 
   forgotBtn:  { alignSelf: 'flex-end', marginBottom: Spacing.md },
   forgotText: { fontSize: 12, color: G, fontWeight: '600' },
-
-  errorBox:  {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(231,76,60,0.08)', borderRadius: Radius.md,
-    padding: 10, marginBottom: Spacing.md,
-    borderWidth: 1, borderColor: 'rgba(231,76,60,0.25)',
-  },
-  errorText: { fontSize: 12, color: '#e74c3c', fontWeight: '500', flex: 1 },
 
   btnInner:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loginBtn:        { backgroundColor: G, borderRadius: Radius.lg, paddingVertical: 16, alignItems: 'center', marginBottom: Spacing.md, ...Shadows.green },

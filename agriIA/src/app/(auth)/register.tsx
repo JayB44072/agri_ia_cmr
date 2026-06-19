@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
+import { AuthBackground } from '@/components/ui/AuthBackground';
+import ErrorBox from '@/components/ui/ErrorBox';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const G      = Colors.splash.green;
@@ -420,13 +422,7 @@ export default function Register(): React.JSX.Element {
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* ── Formes vertes circulaires en arrière-plan ── */}
-      <View style={s.haloTopRight} />
-      <View style={s.haloTopLeft} />
-      <View style={s.haloMidLeft} />
-      <View style={s.haloMidRight} />
-      <View style={s.haloBottomRight} />
-      <View style={s.haloBottomLeft} />
+      <AuthBackground variant="register" />
 
       {/* Header */}
       <View style={s.header}>
@@ -557,12 +553,7 @@ export default function Register(): React.JSX.Element {
           </View>
         )}
 
-        {error !== '' && (
-          <View style={s.errorBox}>
-            <Ionicons name="warning-outline" size={14} color="#e74c3c" style={{ marginRight: 6 }} />
-            <Text style={s.errorText}>{error}</Text>
-          </View>
-        )}
+        <ErrorBox message={error} />
 
         {step < TOTAL_STEPS - 1 ? (
           <TouchableOpacity style={s.nextBtn} onPress={nextStep} activeOpacity={0.82}>
@@ -591,38 +582,6 @@ export default function Register(): React.JSX.Element {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-
-  // ── Halos circulaires ──────────────────────────────────────────────────────
-  haloTopRight:   {
-    position: 'absolute', width: 300, height: 300, borderRadius: 150,
-    backgroundColor: 'rgba(60,185,90,0.09)',
-    top: -120, right: -80,
-  },
-  haloTopLeft:    {
-    position: 'absolute', width: 180, height: 180, borderRadius: 90,
-    backgroundColor: 'rgba(60,185,90,0.07)',
-    top: 30, left: -70,
-  },
-  haloMidLeft:    {
-    position: 'absolute', width: 140, height: 140, borderRadius: 70,
-    backgroundColor: 'rgba(60,185,90,0.05)',
-    top: '35%', left: -50,
-  },
-  haloMidRight:   {
-    position: 'absolute', width: 110, height: 110, borderRadius: 55,
-    backgroundColor: 'rgba(60,185,90,0.05)',
-    top: '55%', right: -35,
-  },
-  haloBottomRight: {
-    position: 'absolute', width: 250, height: 250, borderRadius: 125,
-    backgroundColor: 'rgba(60,185,90,0.08)',
-    bottom: -90, right: -70,
-  },
-  haloBottomLeft:  {
-    position: 'absolute', width: 130, height: 130, borderRadius: 65,
-    backgroundColor: 'rgba(60,185,90,0.05)',
-    bottom: 100, left: -45,
-  },
 
   // ── Layout ─────────────────────────────────────────────────────────────────
   header:     {
@@ -689,14 +648,6 @@ const s = StyleSheet.create({
   summaryRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(60,185,90,0.1)' },
   summaryLabel:  { fontSize: 12, color: T2, width: 90 },
   summaryValue:  { fontSize: 13, color: T, fontWeight: '600', flex: 1 },
-
-  errorBox:  {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(231,76,60,0.07)', borderRadius: Radius.md,
-    padding: 10, marginBottom: Spacing.md,
-    borderWidth: 1, borderColor: 'rgba(231,76,60,0.2)',
-  },
-  errorText: { fontSize: 12, color: '#e74c3c', fontWeight: '500', flex: 1 },
 
   btnInner:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   nextBtn:     { backgroundColor: G, borderRadius: Radius.lg, paddingVertical: 16, alignItems: 'center', ...Shadows.green },

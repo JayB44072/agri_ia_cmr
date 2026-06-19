@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView } from 'react-native';
+import { useThemeColors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { Parcelle } from '@/components/data/parcellesData';
 
@@ -109,8 +110,7 @@ function LegendChip({ color, label, active, emoji, dark }: {
 export default function ParcelleMap({
   parcelles, selectedId, onSelect, onSelectParcelle, expanded, onToggleExpand,
 }: Props) {
-  const scheme        = useColorScheme();
-  const dark          = scheme === 'dark';
+  const { isDark: dark } = useThemeColors();
 
   // Couleurs adaptatives
   const containerBg   = dark ? '#0f172a'                    : '#ffffff';

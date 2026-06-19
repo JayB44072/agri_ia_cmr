@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { Colors, Radius, Shadows } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Radius, Shadows, useThemeColors } from '@/constants/theme';
 
 interface CardProps {
   children: React.ReactNode;
@@ -10,8 +9,7 @@ interface CardProps {
 }
 
 export default function Card({ children, style, variant = 'default' }: CardProps): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
 
   return (
     <View style={[

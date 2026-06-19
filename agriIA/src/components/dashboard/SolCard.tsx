@@ -1,17 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Radius, useThemeColors } from '@/constants/theme';
+import { useFlash, LiveValue } from '@/hooks/useFlash';
+import { fluctuate } from '@/lib/fluctuate';
 import { DONNEES_SOL } from '@/components/data/mockData';
 import Card from '@/components/ui/Card';
 
 const G = Colors.splash.green;
-
-// ── Simulation live sol ───────────────────────────────────────────────────────
-function fluctuate(base: number, delta: number, dec = 1): number {
-  return parseFloat((base + (Math.random() * 2 - 1) * delta).toFixed(dec));
-}
 
 interface LiveSol {
   ph: number; humidite: number; temperature: number;
@@ -39,39 +35,11 @@ function useLiveSol(interval = 4000): LiveSol {
   return live;
 }
 
-// ── Flash animation ───────────────────────────────────────────────────────────
-function useFlash(value: number | string): Animated.Value {
-  const anim = useRef(new Animated.Value(1)).current;
-  const prev = useRef(value);
-  useEffect(() => {
-    if (prev.current !== value) {
-      prev.current = value;
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 0.2, duration: 120, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 1,   duration: 300, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [value]);
-  return anim;
-}
-
-function LiveValue({ value, style, suffix }: {
-  value: number | string; style: object; suffix?: string;
-}): React.JSX.Element {
-  const opacity = useFlash(value);
-  return (
-    <Animated.Text style={[style, { opacity }]}>
-      {value}{suffix ?? ''}
-    </Animated.Text>
-  );
-}
-
 // ── Barre de progression animée ───────────────────────────────────────────────
 function AnimatedBar({ value, max, color }: {
   value: number; max: number; color: string;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const widthAnim = useRef(new Animated.Value((value / max) * 100)).current;
 
   useEffect(() => {
@@ -124,8 +92,7 @@ function MetricCard({ label, value, unit, icon, color, max, optimal }: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string; max: number; optimal: [number, number];
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const status = getStatus(value, optimal);
   const statusColor = STATUS_COLORS[status];
 
@@ -177,8 +144,7 @@ const mc = StyleSheet.create({
 
 // ── Score santé global ────────────────────────────────────────────────────────
 function ScoreGlobal({ sol }: { sol: LiveSol }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
 
   // Score basé sur combien de métriques sont dans la plage optimale
   const checks = [
@@ -230,8 +196,7 @@ function MiniMetric({ icon, label, value, unit, color }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string; value: number; unit: string; color: string;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   return (
     <View style={[mm.item, { backgroundColor: colors.backgroundElement }]}>
       <Ionicons name={icon} size={14} color={color} />
@@ -261,8 +226,7 @@ const mm = StyleSheet.create({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 export default function SolCard(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const live = useLiveSol(4000);
 
   // Animation d'entrée
