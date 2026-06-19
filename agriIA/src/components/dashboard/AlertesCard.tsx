@@ -4,8 +4,7 @@ import {
   Animated, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius, Spacing } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Radius, Spacing, useThemeColors } from '@/constants/theme';
 import { ALERTES, Alerte, AlerteNiveau } from '@/components/data/mockData';
 import Card from '@/components/ui/Card';
 
@@ -56,8 +55,7 @@ function AlerteItem({
   onMarkRead: (id: string) => void;
   index: number;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const cfg    = NIVEAU_CONFIG[alerte.niveau];
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -143,8 +141,7 @@ const ai = StyleSheet.create({
 function FilterTab({ label, count, active, color, onPress }: {
   label: string; count: number; active: boolean; color: string; onPress: () => void;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   return (
     <TouchableOpacity
       style={[ft.tab, active && { borderBottomColor: color, borderBottomWidth: 2 }]}
@@ -171,8 +168,7 @@ const ft = StyleSheet.create({
 type FilterType = 'all' | 'danger' | 'warning' | 'info';
 
 export default function AlertesCard(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const { alertes, setAlertes } = useAlertes(12000);
   const [filter, setFilter] = useState<FilterType>('all');
 

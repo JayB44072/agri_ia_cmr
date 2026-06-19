@@ -4,8 +4,7 @@ import {
   ScrollView, Modal, Animated, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Spacing, Radius, Shadows, useThemeColors } from '@/constants/theme';
 import { Parcelle, EMOJIS_CULTURE } from '@/components/data/parcellesData';
 
 interface ParcelleFormModalProps {
@@ -35,9 +34,7 @@ const CULTURES_DISPO = [
 const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Humifère', 'Latéritique'];
 
 export default function ParcelleFormModal({ visible, parcelle, onClose, onSave }: ParcelleFormModalProps): React.JSX.Element {
-  const scheme = useColorScheme();
-  const dark   = scheme === 'dark';
-  const colors = Colors[dark ? 'dark' : 'light'];
+  const { colors, isDark: dark } = useThemeColors();
   const G      = Colors.splash.green;
   const BORDER = colors.primaryBorder; // ← utilise primaryBorder du theme
 

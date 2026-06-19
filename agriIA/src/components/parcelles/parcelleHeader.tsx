@@ -4,7 +4,8 @@
 //  Mode clair : fond blanc   |   Mode sombre : fond #0f172a
 // ─────────────────────────────────────────────────────────────
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { useThemeColors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
@@ -26,8 +27,7 @@ export default function ParcelleHeader({
   alertCount      = 0,
   totalRendement  = '—',
 }: Props) {
-  const scheme = useColorScheme();
-  const dark   = scheme === 'dark';
+  const { isDark: dark } = useThemeColors();
 
   const bg         = dark ? '#0f172a'                   : '#ffffff';
   const borderBot  = dark ? 'rgba(34,197,94,0.12)'      : 'rgba(60,185,90,0.12)';

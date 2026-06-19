@@ -4,8 +4,7 @@ import {
   TextInput, Animated, ActivityIndicator, Modal, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Spacing, Radius, useThemeColors } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -17,6 +16,7 @@ import {
   ProductRow,
   WalletRow,
 } from '@/services/database/marketplace';
+import { callGemini } from '@/lib/gemini';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProduitMarche {
@@ -49,7 +49,12 @@ const PRODUITS_BASE: ProduitMarche[] = [
   { id:'p5', nom:'Cacao', emoji:'🍫', categorie:'cash', prixActuel:2800, unite:'kg', tendance:'hausse', variation:15, stock:'rare', vendeurs:4, conseil:'Prix historiquement hauts. Vendez rapidement !' },
 ];
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+// ── Gemini IA integration ─────────────────────────────────────────────────────
+const CONSEILS_FALLBACK: ConseilIA[] = [
+  { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
+  { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
+  { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la COOPAGRI', priorite: 'moyenne' },
+];
 
 async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilIA[]> {
   const top3Hausse = produits.filter(p => p.tendance === 'hausse').slice(0, 3);
@@ -64,27 +69,7 @@ Donne 3 conseils pratiques et concrets pour un agriculteur camerounais.
 Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte explicatif) avec ce format exact :
 [{"titre":"...","texte":"...","action":"...","priorite":"haute|moyenne|info"}]`;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [
-      { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
-      { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
-      { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la coopérative', priorite: 'moyenne' },
-    ];
-  }
+  return callGemini<ConseilIA[]>(prompt, CONSEILS_FALLBACK);
 }
 
 // ── VenteModal Component ───────────────────────────────────────────────────────
@@ -207,9 +192,7 @@ function VenteModal({ visible, onClose, onPublish, colors }: {
 
 // ── Main Screen ────────────────────────────────────────────────────────────────
 export default function MarcheScreen() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
-  const colors = isDark ? Colors.dark : Colors.light;
+  const { colors } = useThemeColors();
 
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'cours' | 'annonces'>('cours');

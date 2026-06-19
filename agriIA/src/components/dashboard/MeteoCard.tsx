@@ -1,17 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Colors, Radius, useThemeColors } from '@/constants/theme';
+import { useFlash, LiveValue } from '@/hooks/useFlash';
+import { fluctuate } from '@/lib/fluctuate';
+import { getUVColor, getUVLabel } from '@/lib/uv';
 import { METEO } from '@/components/data/mockData';
 import Card from '@/components/ui/Card';
 
 const G = Colors.splash.green;
-
-// ── Simulation live ────────────────────────────────────────────────────────────
-function fluctuate(base: number, delta: number, dec = 1): number {
-  return parseFloat((base + (Math.random() * 2 - 1) * delta).toFixed(dec));
-}
 
 interface LiveMeteo {
   temperature: number; ressentie: number; humidite: number;
@@ -42,33 +39,6 @@ function useLiveMeteo(interval = 3000): LiveMeteo {
   return live;
 }
 
-// ── Flash animation à chaque changement de valeur ─────────────────────────────
-function useFlash(value: number | string): Animated.Value {
-  const anim = useRef(new Animated.Value(1)).current;
-  const prev = useRef(value);
-  useEffect(() => {
-    if (prev.current !== value) {
-      prev.current = value;
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 0.25, duration: 120, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 1,    duration: 280, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [value]);
-  return anim;
-}
-
-function LiveValue({ value, style, suffix }: {
-  value: number | string; style: object; suffix?: string;
-}): React.JSX.Element {
-  const opacity = useFlash(value);
-  return (
-    <Animated.Text style={[style, { opacity }]}>
-      {value}{suffix ?? ''}
-    </Animated.Text>
-  );
-}
-
 // ── Icône météo Ionicons ──────────────────────────────────────────────────────
 function getMeteoIcon(icone: string): keyof typeof Ionicons.glyphMap {
   const MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -81,26 +51,12 @@ function getMeteoIcon(icone: string): keyof typeof Ionicons.glyphMap {
   return MAP[icone] ?? 'partly-sunny-outline';
 }
 
-function getUVColor(uv: number): string {
-  if (uv <= 2) return '#27ae60';
-  if (uv <= 5) return '#f5a623';
-  if (uv <= 7) return '#e67e22';
-  return '#e74c3c';
-}
-function getUVLabel(uv: number): string {
-  if (uv <= 2) return 'Faible';
-  if (uv <= 5) return 'Modéré';
-  if (uv <= 7) return 'Élevé';
-  return 'Très élevé';
-}
-
 // ── StatItem ──────────────────────────────────────────────────────────────────
 function StatItem({ icon, value, label, color, sub }: {
   icon: keyof typeof Ionicons.glyphMap;
   value: number | string; label: string; color?: string; sub?: string;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   return (
     <View style={si.item}>
       <View style={[si.iconBox, { backgroundColor: `${color ?? G}18` }]}>
@@ -125,8 +81,7 @@ function PrevisionItem({ jour, min, max, icone, pluie, isToday }: {
   jour: string; min: number; max: number;
   icone: string; pluie: number; isToday?: boolean;
 }): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const pluieColor = pluie >= 60 ? '#3498db' : pluie >= 30 ? '#f5a623' : '#27ae60';
   return (
     <View style={[
@@ -158,8 +113,7 @@ const pv = StyleSheet.create({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 export default function MeteoCard(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const live   = useLiveMeteo(3000);
 
   // Animation d'entrée

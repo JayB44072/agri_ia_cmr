@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ScrollView, StyleSheet, View, Text, ActivityIndicator } from 'react-native';
-import { Colors, Spacing } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { Spacing, useThemeColors } from '@/constants/theme';
 import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
 import { getPlotsByOwner } from '@/services/database/plots';
@@ -17,8 +16,7 @@ import SectionTitle from '@/components/ui/SectionTitle';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Dashboard(): React.JSX.Element {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const { colors } = useThemeColors();
   const { profile } = useUser();
   const { user } = useAuth();
 
