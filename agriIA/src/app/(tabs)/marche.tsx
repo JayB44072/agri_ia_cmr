@@ -7,16 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/context/AuthContext';
-import {
-  getProducts,
-  createProduct,
-  deleteProduct,
-  getOrCreateWallet,
-  processPurchase,
-  ProductRow,
-  WalletRow,
-} from '@/services/database/marketplace';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProduitMarche {
@@ -33,6 +23,16 @@ interface ProduitMarche {
   conseil: string;
 }
 
+interface MaListe {
+  id: string;
+  nom: string;
+  emoji: string;
+  quantite: string;
+  prixUnitaire: number;
+  unite: string;
+  statut: 'disponible' | 'recherche' | 'vendu';
+}
+
 interface ConseilIA {
   titre: string;
   texte: string;
@@ -40,18 +40,36 @@ interface ConseilIA {
   priorite: 'haute' | 'moyenne' | 'info';
 }
 
-// ── Données de base (prix de référence) ─────────────────────────────────────────
+// ── Données de base (prix du marché camerounais) ───────────────────────────────
 const PRODUITS_BASE: ProduitMarche[] = [
   { id:'p1', nom:'Maïs', emoji:'🌽', categorie:'cereale', prixActuel:180, unite:'kg', tendance:'hausse', variation:8, stock:'normal', vendeurs:12, conseil:'Bon moment pour vendre, prix en hausse.' },
   { id:'p2', nom:'Manioc', emoji:'🥔', categorie:'tubercule', prixActuel:120, unite:'kg', tendance:'stable', variation:0, stock:'abondant', vendeurs:18, conseil:'Prix stable. Stockez si possible pour la saison sèche.' },
   { id:'p3', nom:'Tomate', emoji:'🍅', categorie:'legume', prixActuel:650, unite:'kg', tendance:'baisse', variation:-12, stock:'abondant', vendeurs:25, conseil:'Surplus sur le marché. Vendez rapidement avant la dépréciation.' },
   { id:'p4', nom:'Plantain', emoji:'🍌', categorie:'fruit', prixActuel:300, unite:'régime', tendance:'hausse', variation:5, stock:'normal', vendeurs:8, conseil:'Demande forte. Excellente période pour la mise en marché.' },
   { id:'p5', nom:'Cacao', emoji:'🍫', categorie:'cash', prixActuel:2800, unite:'kg', tendance:'hausse', variation:15, stock:'rare', vendeurs:4, conseil:'Prix historiquement hauts. Vendez rapidement !' },
+  { id:'p6', nom:'Arachide', emoji:'🥜', categorie:'cereale', prixActuel:900, unite:'kg', tendance:'stable', variation:2, stock:'normal', vendeurs:10, conseil:'Bonne période pour commercialiser.' },
+  { id:'p7', nom:'Piment', emoji:'🌶️', categorie:'legume', prixActuel:2500, unite:'kg', tendance:'hausse', variation:20, stock:'rare', vendeurs:6, conseil:'Forte demande ! Augmentez votre production.' },
+  { id:'p8', nom:'Haricot', emoji:'🫘', categorie:'cereale', prixActuel:750, unite:'kg', tendance:'baisse', variation:-5, stock:'abondant', vendeurs:14, conseil:'Prix en légère baisse. Attendez si possible.' },
+  { id:'p9', nom:'Café', emoji:'☕', categorie:'cash', prixActuel:3200, unite:'kg', tendance:'stable', variation:1, stock:'normal', vendeurs:3, conseil:'Prix stables. Maintenez votre production.' },
+  { id:'p10', nom:'Igname', emoji:'🍠', categorie:'tubercule', prixActuel:400, unite:'kg', tendance:'hausse', variation:10, stock:'rare', vendeurs:7, conseil:'Saison favorable. Bonne période de vente.' },
 ];
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+// ── Gemini IA integration ─────────────────────────────────────────────────────
+const GEMINI_KEY = 'AIzaSyDemo_placeholder'; // À remplacer par votre clé
 
-async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilIA[]> {
+interface ConseilsMarcheResult {
+  conseils: ConseilIA[];
+  isFallback: boolean;
+  error?: string;
+}
+
+const CONSEILS_FALLBACK: ConseilIA[] = [
+  { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
+  { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
+  { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la COOPAGRI', priorite: 'moyenne' },
+];
+
+async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilsMarcheResult> {
   const top3Hausse = produits.filter(p => p.tendance === 'hausse').slice(0, 3);
   const top3Baisse = produits.filter(p => p.tendance === 'baisse').slice(0, 3);
 
@@ -61,7 +79,7 @@ Voici les prix actuels du marché agricole de Yaoundé (FCFA/kg ou unité) :
 - En baisse : ${top3Baisse.map(p => `${p.nom} à ${p.prixActuel} FCFA/${p.unite} (${p.variation}%)`).join(', ')}
 
 Donne 3 conseils pratiques et concrets pour un agriculteur camerounais.
-Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte explicatif) avec ce format exact :
+Réponds UNIQUEMENT en JSON valide (sans markdown) avec ce format exact :
 [{"titre":"...","texte":"...","action":"...","priorite":"haute|moyenne|info"}]`;
 
   try {
@@ -73,486 +91,482 @@ Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte expl
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       }
     );
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error(`Gemini API : ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Réponse Gemini vide ou inattendue');
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [
-      { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
-      { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
-      { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la coopérative', priorite: 'moyenne' },
-    ];
+    let parsed: ConseilIA[];
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      throw new Error('Réponse Gemini non-JSON');
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Format de réponse Gemini invalide');
+    return { conseils: parsed, isFallback: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur réseau inconnue';
+    console.warn('[Conseils Marché IA] Échec :', message);
+    return { conseils: CONSEILS_FALLBACK, isFallback: true, error: message };
   }
 }
 
-// ── VenteModal Component ───────────────────────────────────────────────────────
-function VenteModal({ visible, onClose, onPublish, colors }: {
-  visible: boolean; onClose: () => void;
-  onPublish: (title: string, crop: string, price: number, unit: string, qty: number, description: string) => Promise<void>;
-  colors: any;
-}) {
-  const [title, setTitle] = useState('');
-  const [crop, setCrop] = useState('Maïs');
-  const [price, setPrice] = useState('');
-  const [unit, setUnit] = useState('kg');
-  const [qty, setQty] = useState('');
-  const [description, setDescription] = useState('');
-  const [publishing, setPublishing] = useState(false);
+// ── Couleurs tendance ─────────────────────────────────────────────────────────
+function getTendanceColor(t: string, c: typeof Colors.light | typeof Colors.dark): string {
+  if (t === 'hausse') return c.success;
+  if (t === 'baisse') return c.danger;
+  return c.textSecondary;
+}
 
-  const handleSave = async () => {
-    if (!title || !price || !qty) {
-      alert("Veuillez remplir tous les champs obligatoires.");
-      return;
-    }
-    setPublishing(true);
-    await onPublish(title, crop, parseFloat(price), unit, parseFloat(qty), description);
-    setPublishing(false);
-    onClose();
-  };
+function getPrioriteColor(p: string): string {
+  if (p === 'haute') return '#ef4444';
+  if (p === 'moyenne') return '#f59e0b';
+  return '#3498db';
+}
+
+// ── Composant carte produit ───────────────────────────────────────────────────
+function ProduitCard({ produit, index, colors, onSell }: {
+  produit: ProduitMarche; index: number;
+  colors: typeof Colors.light | typeof Colors.dark;
+  onSell: (p: ProduitMarche) => void;
+}) {
+  const fade = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const tc = getTendanceColor(produit.tendance, colors);
+  const stockColor = produit.stock === 'rare' ? colors.danger : produit.stock === 'abondant' ? colors.info : colors.success;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={vm.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={[vm.sheet, { backgroundColor: colors.card }]} onStartShouldSetResponder={() => true}>
-          <View style={[vm.handle, { backgroundColor: colors.cardBorder }]} />
-          <Text style={[vm.title, { color: colors.text }]}>Publier un produit</Text>
-
-          <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-            <View style={vm.field}>
-              <Text style={[vm.label, { color: colors.textSecondary }]}>Titre de l'annonce *</Text>
-              <TextInput
-                style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                placeholder="Ex: Maïs jaune sec de qualité"
-                placeholderTextColor={colors.textSecondary}
-                value={title}
-                onChangeText={setTitle}
+    <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
+      <TouchableOpacity
+        style={[pc.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+        activeOpacity={0.85}
+        onPress={() => onSell(produit)}
+      >
+        <View style={pc.topRow}>
+          <View style={pc.leftSide}>
+            <Text style={pc.emoji}>{produit.emoji}</Text>
+            <View>
+              <Text style={[pc.nom, { color: colors.text }]}>{produit.nom}</Text>
+              <Text style={[pc.categorie, { color: colors.textSecondary }]}>{produit.categorie}</Text>
+            </View>
+          </View>
+          <View style={pc.rightSide}>
+            <Text style={[pc.prix, { color: colors.text }]}>
+              {produit.prixActuel.toLocaleString()} <Text style={[pc.unite, { color: colors.textSecondary }]}>FCFA/{produit.unite}</Text>
+            </Text>
+            <View style={[pc.tendanceBadge, { backgroundColor: `${tc}18` }]}>
+              <Ionicons
+                name={produit.tendance === 'hausse' ? 'trending-up' : produit.tendance === 'baisse' ? 'trending-down' : 'remove'}
+                size={11} color={tc}
               />
+              <Text style={[pc.tendanceText, { color: tc }]}>
+                {produit.variation > 0 ? '+' : ''}{produit.variation}%
+              </Text>
             </View>
+          </View>
+        </View>
 
-            <View style={vm.field}>
-              <Text style={[vm.label, { color: colors.textSecondary }]}>Culture</Text>
-              <TextInput
-                style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                placeholder="Ex: Maïs, Cacao, Tomate"
-                placeholderTextColor={colors.textSecondary}
-                value={crop}
-                onChangeText={setCrop}
-              />
-            </View>
-
-            <View style={s.formFieldRow}>
-              <View style={[vm.field, { flex: 1 }]}>
-                <Text style={[vm.label, { color: colors.textSecondary }]}>Prix (FCFA) *</Text>
-                <TextInput
-                  style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                  placeholder="Ex: 250"
-                  keyboardType="numeric"
-                  placeholderTextColor={colors.textSecondary}
-                  value={price}
-                  onChangeText={setPrice}
-                />
-              </View>
-              <View style={[vm.field, { flex: 1 }]}>
-                <Text style={[vm.label, { color: colors.textSecondary }]}>Unité *</Text>
-                <TextInput
-                  style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                  placeholder="Ex: kg, sac, régime"
-                  placeholderTextColor={colors.textSecondary}
-                  value={unit}
-                  onChangeText={setUnit}
-                />
-              </View>
-            </View>
-
-            <View style={vm.field}>
-              <Text style={[vm.label, { color: colors.textSecondary }]}>Quantité disponible *</Text>
-              <TextInput
-                style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                placeholder="Ex: 150"
-                keyboardType="numeric"
-                placeholderTextColor={colors.textSecondary}
-                value={qty}
-                onChangeText={setQty}
-              />
-            </View>
-
-            <View style={vm.field}>
-              <Text style={[vm.label, { color: colors.textSecondary }]}>Description</Text>
-              <TextInput
-                style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
-                placeholder="Détails du produit, qualité..."
-                placeholderTextColor={colors.textSecondary}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-              />
-            </View>
-          </ScrollView>
-
-          <TouchableOpacity style={[vm.btn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={publishing}>
-            {publishing ? <ActivityIndicator color="#fff" /> : (
-              <>
-                <Ionicons name="storefront" size={16} color="#fff" />
-                <Text style={vm.btnText}>Publier l'annonce</Text>
-              </>
-            )}
+        <View style={pc.bottomRow}>
+          <View style={[pc.stockBadge, { backgroundColor: `${stockColor}18` }]}>
+            <View style={[pc.dot, { backgroundColor: stockColor }]} />
+            <Text style={[pc.stockText, { color: stockColor }]}>{produit.stock}</Text>
+          </View>
+          <Text style={[pc.vendeurs, { color: colors.textSecondary }]}>
+            <Ionicons name="people-outline" size={10} /> {produit.vendeurs} vendeurs
+          </Text>
+          <TouchableOpacity
+            style={[pc.vendreBtn, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}30` }]}
+            onPress={() => onSell(produit)}
+          >
+            <Ionicons name="storefront-outline" size={12} color={colors.primary} />
+            <Text style={[pc.vendreBtnText, { color: colors.primary }]}>Vendre</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={[pc.conseilBox, { backgroundColor: colors.backgroundElement }]}>
+          <Ionicons name="bulb-outline" size={11} color={colors.primary} />
+          <Text style={[pc.conseilText, { color: colors.textSecondary }]}>{produit.conseil}</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+const pc = StyleSheet.create({
+  card: { borderRadius: Radius.lg, borderWidth: 1, marginBottom: 10, padding: 14, gap: 10 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  leftSide: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  emoji: { fontSize: 28 },
+  nom: { fontSize: 15, fontWeight: '800' },
+  categorie: { fontSize: 11, textTransform: 'capitalize' },
+  rightSide: { alignItems: 'flex-end', gap: 4 },
+  prix: { fontSize: 16, fontWeight: '900' },
+  unite: { fontSize: 11, fontWeight: '400' },
+  tendanceBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  tendanceText: { fontSize: 11, fontWeight: '700' },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stockBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  stockText: { fontSize: 10, fontWeight: '600' },
+  vendeurs: { flex: 1, fontSize: 10 },
+  vendreBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 5 },
+  vendreBtnText: { fontSize: 11, fontWeight: '700' },
+  conseilBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  conseilText: { flex: 1, fontSize: 11, lineHeight: 16 },
+});
+
+// ── Modal vente ───────────────────────────────────────────────────────────────
+function VenteModal({ produit, visible, onClose, colors }: {
+  produit: ProduitMarche | null; visible: boolean;
+  onClose: () => void; colors: typeof Colors.light | typeof Colors.dark;
+}) {
+  const [quantite, setQuantite] = useState('');
+  const [note, setNote] = useState('');
+  const total = produit ? (parseFloat(quantite) || 0) * produit.prixActuel : 0;
+  const slideAnim = useRef(new Animated.Value(300)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
+    } else {
+      Animated.timing(slideAnim, { toValue: 300, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [visible]);
+
+  if (!produit) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={vm.overlay} activeOpacity={1} onPress={onClose}>
+        <Animated.View
+          style={[vm.sheet, { backgroundColor: colors.card, transform: [{ translateY: slideAnim }] }]}
+        >
+          <View style={[vm.handle, { backgroundColor: colors.cardBorder }]} />
+
+          <View style={vm.header}>
+            <Text style={vm.emoji}>{produit.emoji}</Text>
+            <View>
+              <Text style={[vm.title, { color: colors.text }]}>Publier une annonce</Text>
+              <Text style={[vm.subtitle, { color: colors.textSecondary }]}>{produit.nom} · {produit.prixActuel.toLocaleString()} FCFA/{produit.unite}</Text>
+            </View>
+          </View>
+
+          <View style={vm.field}>
+            <Text style={[vm.label, { color: colors.textSecondary }]}>Quantité ({produit.unite})</Text>
+            <TextInput
+              style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
+              keyboardType="numeric"
+              placeholder={`Ex: 50 ${produit.unite}`}
+              placeholderTextColor={colors.textSecondary}
+              value={quantite}
+              onChangeText={setQuantite}
+            />
+          </View>
+
+          <View style={vm.field}>
+            <Text style={[vm.label, { color: colors.textSecondary }]}>Note (optionnel)</Text>
+            <TextInput
+              style={[vm.input, { color: colors.text, backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}
+              placeholder="Description de votre produit..."
+              placeholderTextColor={colors.textSecondary}
+              value={note}
+              onChangeText={setNote}
+              multiline
+            />
+          </View>
+
+          {parseFloat(quantite) > 0 && (
+            <View style={[vm.totalBox, { backgroundColor: `${colors.primary}15` }]}>
+              <Text style={[vm.totalLabel, { color: colors.textSecondary }]}>Revenu estimé</Text>
+              <Text style={[vm.totalMontant, { color: colors.primary }]}>{total.toLocaleString()} FCFA</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[vm.btn, { backgroundColor: colors.primary }]}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="storefront" size={16} color="#fff" />
+            <Text style={vm.btnText}>Publier l'annonce</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </TouchableOpacity>
     </Modal>
   );
 }
 
-// ── Main Screen ────────────────────────────────────────────────────────────────
+const vm = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, gap: 16, paddingBottom: 40 },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  emoji: { fontSize: 36 },
+  title: { fontSize: 18, fontWeight: '900' },
+  subtitle: { fontSize: 12, marginTop: 2 },
+  field: { gap: 6 },
+  label: { fontSize: 12, fontWeight: '600' },
+  input: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14 },
+  totalBox: { borderRadius: 12, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { fontSize: 13, fontWeight: '600' },
+  totalMontant: { fontSize: 22, fontWeight: '900' },
+  btn: { borderRadius: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+});
+
+// ── Écran principal ───────────────────────────────────────────────────────────
+const CATEGORIES = ['Tout', 'cereale', 'legume', 'fruit', 'tubercule', 'cash'] as const;
+type CatFilter = typeof CATEGORIES[number];
+
 export default function MarcheScreen() {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
-  const colors = isDark ? Colors.dark : Colors.light;
+  const colors = (isDark ? Colors.dark : Colors.light) as typeof Colors.light | typeof Colors.dark;
 
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'cours' | 'annonces'>('cours');
+  const [categorie, setCategorie] = useState<CatFilter>('Tout');
   const [recherche, setRecherche] = useState('');
-  const [produitsMarche, setProduitsMarche] = useState<ProduitMarche[]>(PRODUITS_BASE);
-  const [dbProducts, setDbProducts] = useState<ProductRow[]>([]);
-  const [wallet, setWallet] = useState<WalletRow | null>(null);
+  const [produits] = useState<ProduitMarche[]>(PRODUITS_BASE);
   const [conseils, setConseils] = useState<ConseilIA[]>([]);
   const [loadingIA, setLoadingIA] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [conseilsError, setConseilsError] = useState<string | null>(null);
+  const [produitSelectionne, setProduitSelectionne] = useState<ProduitMarche | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  const headerAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    chargerDonnees();
-  }, [user]);
+    Animated.timing(headerAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+    chargerConseils();
+  }, []);
 
-  const chargerDonnees = async () => {
+  async function chargerConseils() {
+    try {
+      setLoadingIA(true);
+      setConseilsError(null);
+      const result = await getConseilsGemini(produits);
+      setConseils(result.conseils);
+      if (result.isFallback) setConseilsError(result.error ?? 'Conseils hors-ligne');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inattendue';
+      console.warn('[Marché] chargerConseils :', msg);
+      setConseilsError(msg);
+      setConseils(CONSEILS_FALLBACK);
+    } finally {
+      setLoadingIA(false);
+    }
+  }
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // 1. Fetch wallet
-    if (user) {
-      const { data: w } = await getOrCreateWallet(user.id);
-      if (w) setWallet(w);
+    try {
+      await chargerConseils();
+    } finally {
+      setRefreshing(false);
     }
-    // 2. Fetch products from DB
-    const { data: p } = await getProducts();
-    if (p) setDbProducts(p);
+  }, []);
 
-    // 3. Load Gemini advice
-    setLoadingIA(true);
-    const c = await getConseilsGemini(produitsMarche);
-    setConseils(c);
-    setLoadingIA(false);
-    setRefreshing(false);
-  };
-
-  const handlePublish = async (title: string, crop: string, price: number, unit: string, qty: number, description: string) => {
-    if (!user) return;
-    const newProduct = {
-      owner_id: user.id,
-      title,
-      crop,
-      price,
-      unit,
-      quantity: qty,
-      description,
-      city: 'Yaoundé',
-      region: 'Centre',
-      phone: wallet?.phone || '677000000',
-      image_url: null,
-    };
-
-    const { error } = await createProduct(newProduct);
-    if (error) {
-      alert("Erreur de publication: " + error.message);
-    } else {
-      chargerDonnees();
-    }
-  };
-
-  const handleBuy = async (prod: ProductRow) => {
-    if (!user) return;
-    if (prod.owner_id === user.id) {
-      alert("Vous ne pouvez pas acheter votre propre produit !");
-      return;
-    }
-
-    const confirmBuy = confirm(`Voulez-vous acheter ${prod.quantity} ${prod.unit} de "${prod.title}" pour ${(prod.price * prod.quantity).toLocaleString()} FCFA ?`);
-    if (!confirmBuy) return;
-
-    setRefreshing(true);
-    const { error } = await processPurchase(user.id, prod.owner_id, prod.id, prod.quantity, prod.price);
-    setRefreshing(false);
-
-    if (error) {
-      alert("Échec de la transaction: " + error.message);
-    } else {
-      alert("Achat effectué avec succès via Mobile Money !");
-      chargerDonnees();
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    const confirmDelete = confirm("Voulez-vous supprimer cette annonce ?");
-    if (!confirmDelete) return;
-
-    const { error } = await deleteProduct(id);
-    if (error) {
-      alert("Erreur de suppression: " + error.message);
-    } else {
-      chargerDonnees();
-    }
-  };
-
-  // Filter listings
-  const filteredDbProducts = dbProducts.filter(p => {
-    return p.title.toLowerCase().includes(recherche.toLowerCase()) || 
-           (p.crop && p.crop.toLowerCase().includes(recherche.toLowerCase()));
+  const produitsFiltres = produits.filter(p => {
+    const matchCat = categorie === 'Tout' || p.categorie === categorie;
+    const matchSearch = p.nom.toLowerCase().includes(recherche.toLowerCase());
+    return matchCat && matchSearch;
   });
+
+  const nbHausse = produits.filter(p => p.tendance === 'hausse').length;
+  const prixMoyen = Math.round(produits.reduce((a, p) => a + p.prixActuel, 0) / produits.length);
+
+  function ouvrirVente(p: ProduitMarche) {
+    setProduitSelectionne(p);
+    setModalVisible(true);
+  }
 
   return (
     <SafeAreaView style={[s.root, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Wallet Card */}
-      {wallet && (
-        <View style={[s.walletCard, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-          <View style={s.walletRow}>
-            <View>
-              <Text style={s.walletLabel}>Portefeuille Mobile Money ({wallet.carrier})</Text>
-              <Text style={s.walletPhone}>📞 {wallet.phone}</Text>
-            </View>
-            <View style={s.momoBadge}>
-              <Text style={s.momoBadgeText}>SIMULÉ</Text>
-            </View>
+      {/* ── Header animé ── */}
+      <Animated.View style={[s.header, { backgroundColor: colors.background, opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0,1], outputRange: [-20,0] }) }] }]}>
+        <View style={s.headerTop}>
+          <View>
+            <Text style={[s.headerTitle, { color: colors.text }]}>Marché Agricole</Text>
+            <Text style={[s.headerSub, { color: colors.textSecondary }]}>Yaoundé · Mis à jour maintenant</Text>
           </View>
-          <Text style={s.walletBalance}>{wallet.balance.toLocaleString()} FCFA</Text>
+          <View style={[s.liveBadge, { backgroundColor: `${colors.success}15` }]}>
+            <View style={[s.liveDot, { backgroundColor: colors.success }]} />
+            <Text style={[s.liveText, { color: colors.success }]}>LIVE</Text>
+          </View>
         </View>
-      )}
 
-      {/* Tabs Layout */}
-      <View style={s.tabHeader}>
-        <TouchableOpacity
-          style={[s.tabButton, activeTab === 'cours' && s.tabButtonActive]}
-          onPress={() => setActiveTab('cours')}
-        >
-          <Text style={[s.tabButtonText, { color: activeTab === 'cours' ? colors.primary : colors.textSecondary }]}>
-            📊 Cours des Prix
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.tabButton, activeTab === 'annonces' && s.tabButtonActive]}
-          onPress={() => setActiveTab('annonces')}
-        >
-          <Text style={[s.tabButtonText, { color: activeTab === 'annonces' ? colors.primary : colors.textSecondary }]}>
-            🛒 Annonces ({dbProducts.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
+        {/* Stats résumé */}
+        <View style={s.statsRow}>
+          {[
+            { label: 'Produits', val: `${produits.length}`, icon: 'leaf-outline' as const, color: colors.primary },
+            { label: 'En hausse', val: `${nbHausse}`, icon: 'trending-up-outline' as const, color: colors.success },
+            { label: 'Prix moy.', val: `${prixMoyen.toLocaleString()}`, icon: 'cash-outline' as const, color: '#f59e0b' },
+          ].map((stat, i) => (
+            <View key={i} style={[s.statBox, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Ionicons name={stat.icon} size={14} color={stat.color} />
+              <Text style={[s.statVal, { color: colors.text }]}>{stat.val}</Text>
+              <Text style={[s.statLbl, { color: colors.textSecondary }]}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Barre de recherche */}
+        <View style={[s.searchBar, { backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}>
+          <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
+          <TextInput
+            style={[s.searchInput, { color: colors.text }]}
+            placeholder="Rechercher un produit..."
+            placeholderTextColor={colors.textSecondary}
+            value={recherche}
+            onChangeText={setRecherche}
+          />
+          {recherche.length > 0 && (
+            <TouchableOpacity onPress={() => setRecherche('')}>
+              <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filtres catégorie */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtresScroll}>
+          {CATEGORIES.map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[s.filtrePill, { backgroundColor: categorie === cat ? colors.primary : colors.backgroundElement }]}
+              onPress={() => setCategorie(cat)}
+            >
+              <Text style={[s.filtrePillText, { color: categorie === cat ? '#fff' : colors.textSecondary }]}>
+                {cat === 'Tout' ? 'Tout' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Animated.View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={chargerDonnees} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {activeTab === 'cours' ? (
-          <>
-            {/* ── Conseils IA ── */}
-            <View style={[s.iaSection, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-              <View style={s.iaSectionHeader}>
-                <View style={[s.iaIcon, { backgroundColor: `${colors.primary}20` }]}>
-                  <Ionicons name="sparkles" size={15} color={colors.primary} />
-                </View>
-                <Text style={[s.iaSectionTitle, { color: colors.text }]}>Conseils IA Gemini</Text>
-                {loadingIA && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 'auto' }} />}
-              </View>
-
-              {loadingIA ? (
-                <View style={s.iaLoading}>
-                  <Text style={[s.iaLoadingText, { color: colors.textSecondary }]}>Analyse des prix en cours...</Text>
-                </View>
-              ) : (
-                conseils.map((c, i) => (
-                  <View key={i} style={[s.conseilItem, { borderLeftColor: c.priorite === 'haute' ? '#ef4444' : '#f59e0b' }]}>
-                    <Text style={[s.conseilTitre, { color: colors.text }]}>{c.titre}</Text>
-                    <Text style={[s.conseilTexte, { color: colors.textSecondary }]}>{c.texte}</Text>
-                  </View>
-                ))
-              )}
+        {/* ── Conseils IA ── */}
+        <View style={[s.iaSection, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <View style={s.iaSectionHeader}>
+            <View style={[s.iaIcon, { backgroundColor: `${colors.primary}20` }]}>
+              <Ionicons name="sparkles" size={15} color={colors.primary} />
             </View>
+            <Text style={[s.iaSectionTitle, { color: colors.text }]}>Conseils IA Gemini</Text>
+            {loadingIA && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 'auto' }} />}
+          </View>
 
-            {/* List base prices */}
-            {produitsMarche.map((p) => {
-              const tc = p.tendance === 'hausse' ? colors.success : p.tendance === 'baisse' ? colors.danger : colors.textSecondary;
-              return (
-                <View key={p.id} style={[s.prodCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-                  <View style={s.prodCardLeft}>
-                    <Text style={s.prodEmoji}>{p.emoji}</Text>
-                    <View>
-                      <Text style={[s.prodTitle, { color: colors.text }]}>{p.nom}</Text>
-                      <Text style={[s.prodSub, { color: colors.textSecondary }]}>Yaoundé · Moyen</Text>
-                    </View>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[s.prodPrice, { color: colors.text }]}>{p.prixActuel} FCFA/{p.unite}</Text>
-                    <Text style={{ color: tc, fontSize: 11, fontWeight: '700' }}>
-                      {p.tendance === 'hausse' ? '▲' : p.tendance === 'baisse' ? '▼' : '■'} {p.variation}%
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </>
-        ) : (
-          <>
-            {/* Search announcements */}
-            <View style={[s.searchBar, { backgroundColor: colors.backgroundElement, borderColor: colors.cardBorder }]}>
-              <Ionicons name="search-outline" size={16} color={colors.textSecondary} />
-              <TextInput
-                style={[s.searchInput, { color: colors.text }]}
-                placeholder="Rechercher une annonce..."
-                placeholderTextColor={colors.textSecondary}
-                value={recherche}
-                onChangeText={setRecherche}
-              />
+          {conseilsError && (
+            <View style={[s.errorBanner, { backgroundColor: `${colors.danger}12`, borderColor: `${colors.danger}30` }]}>
+              <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+              <Text style={[s.errorBannerText, { color: colors.danger }]}>
+                Conseils hors-ligne — {conseilsError}
+              </Text>
             </View>
+          )}
 
-            {/* List announcements */}
-            {filteredDbProducts.length === 0 ? (
-              <View style={s.emptyState}>
-                <Text style={{ fontSize: 40, marginBottom: 10 }}>🌾</Text>
-                <Text style={[s.emptyText, { color: colors.textSecondary }]}>Aucune annonce disponible.</Text>
+          {loadingIA ? (
+            <View style={s.iaLoading}>
+              <Text style={[s.iaLoadingText, { color: colors.textSecondary }]}>Analyse des prix en cours...</Text>
+            </View>
+          ) : (
+            conseils.map((c, i) => (
+              <View key={i} style={[s.conseilItem, { borderLeftColor: getPrioriteColor(c.priorite) }]}>
+                <Text style={[s.conseilTitre, { color: colors.text }]}>{c.titre}</Text>
+                <Text style={[s.conseilTexte, { color: colors.textSecondary }]}>{c.texte}</Text>
+                <TouchableOpacity style={[s.conseilAction, { backgroundColor: `${getPrioriteColor(c.priorite)}15` }]}>
+                  <Text style={[s.conseilActionText, { color: getPrioriteColor(c.priorite) }]}>{c.action}</Text>
+                  <Ionicons name="arrow-forward" size={11} color={getPrioriteColor(c.priorite)} />
+                </TouchableOpacity>
               </View>
-            ) : (
-              filteredDbProducts.map((p) => {
-                const isOwn = p.owner_id === user?.id;
-                return (
-                  <View key={p.id} style={[s.listingCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-                    <View style={s.listingHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[s.listingTitle, { color: colors.text }]}>{p.title}</Text>
-                        <Text style={[s.listingCrop, { color: colors.primary }]}>🌱 {p.crop || 'Autre'}</Text>
-                      </View>
-                      <Text style={[s.listingPrice, { color: colors.text }]}>
-                        {p.price.toLocaleString()} <Text style={{ fontSize: 10, color: colors.textSecondary }}>FCFA/{p.unit}</Text>
-                      </Text>
-                    </View>
+            ))
+          )}
+        </View>
 
-                    <Text style={[s.listingDesc, { color: colors.textSecondary }]}>
-                      {p.description || "Aucune description fournie."}
-                    </Text>
+        {/* ── Liste produits ── */}
+        <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>
+          PRIX DU MARCHÉ · {produitsFiltres.length} produits
+        </Text>
 
-                    <View style={s.listingFooter}>
-                      <View>
-                        <Text style={[s.listingStock, { color: colors.textSecondary }]}>Dispo: {p.quantity} {p.unit}</Text>
-                        <Text style={[s.listingLoc, { color: colors.textSecondary }]}>📍 {p.city}, {p.region}</Text>
-                      </View>
-
-                      {isOwn ? (
-                        <TouchableOpacity style={[s.deleteBtn, { backgroundColor: `${colors.danger}15` }]} onPress={() => handleDelete(p.id)}>
-                          <Ionicons name="trash-outline" size={14} color={colors.danger} />
-                          <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>Supprimer</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity style={[s.buyBtn, { backgroundColor: colors.primary }]} onPress={() => handleBuy(p)}>
-                          <Ionicons name="cart-outline" size={14} color="#fff" />
-                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Acheter</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </>
-        )}
+        {produitsFiltres.map((p, i) => (
+          <ProduitCard key={p.id} produit={p} index={i} colors={colors} onSell={ouvrirVente} />
+        ))}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Action Button */}
-      {activeTab === 'annonces' && (
-        <TouchableOpacity style={[s.fab, { backgroundColor: colors.primary }]} onPress={() => setModalVisible(true)}>
-          <Ionicons name="add" size={24} color="#fff" />
-          <Text style={s.fabText}>Vendre</Text>
-        </TouchableOpacity>
-      )}
+      {/* ── Bouton flottant ── */}
+      <TouchableOpacity
+        style={[s.fab, { backgroundColor: colors.primary }]}
+        onPress={() => produitsFiltres.length > 0 && ouvrirVente(produitsFiltres[0])}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={24} color="#fff" />
+        <Text style={s.fabText}>Publier</Text>
+      </TouchableOpacity>
 
       <VenteModal
+        produit={produitSelectionne}
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onPublish={handlePublish}
         colors={colors}
       />
     </SafeAreaView>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const vm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 14, paddingBottom: 30 },
-  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
-  title: { fontSize: 18, fontWeight: '850', marginBottom: 6 },
-  field: { gap: 4, marginBottom: 12 },
-  label: { fontSize: 11, fontWeight: '600' },
-  input: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13 },
-  btn: { borderRadius: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
-  btnText: { color: '#fff', fontSize: 14, fontWeight: '750' },
-});
-
 const s = StyleSheet.create({
   root: { flex: 1 },
-  walletCard: { margin: Spacing.md, padding: 16, borderRadius: Radius.md, gap: 8 },
-  walletRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  walletLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600' },
-  walletPhone: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  walletBalance: { color: '#fff', fontSize: 24, fontWeight: '900' },
-  momoBadge: { backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  momoBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  header: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.sm, gap: 10 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerTitle: { fontSize: 22, fontWeight: '900' },
+  headerSub: { fontSize: 12, marginTop: 2 },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  liveText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
 
-  tabHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  tabButton: { flex: 1, alignItems: 'center', paddingVertical: 14 },
-  tabButtonActive: { borderBottomWidth: 2, borderBottomColor: '#22c55e' },
-  tabButtonText: { fontSize: 13, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', gap: 8 },
+  statBox: { flex: 1, alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingVertical: 10, gap: 3 },
+  statVal: { fontSize: 14, fontWeight: '900' },
+  statLbl: { fontSize: 9 },
 
-  content: { paddingHorizontal: Spacing.md, paddingTop: 12 },
-
-  iaSection: { borderRadius: Radius.lg, borderWidth: 1, padding: 14, marginBottom: 16, gap: 10 },
-  iaSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  iaIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  iaSectionTitle: { fontSize: 13, fontWeight: '800' },
-  iaLoading: { alignItems: 'center', paddingVertical: 10 },
-  iaLoadingText: { fontSize: 11 },
-  conseilItem: { borderLeftWidth: 3, paddingLeft: 10, gap: 2, marginBottom: 8 },
-  conseilTitre: { fontSize: 12, fontWeight: '800' },
-  conseilTexte: { fontSize: 11, lineHeight: 16 },
-
-  prodCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: Radius.md, borderWidth: 1, padding: 14, marginBottom: 8 },
-  prodCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  prodEmoji: { fontSize: 24 },
-  prodTitle: { fontSize: 14, fontWeight: '750' },
-  prodSub: { fontSize: 10 },
-  prodPrice: { fontSize: 14, fontWeight: '850' },
-
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   searchInput: { flex: 1, fontSize: 13 },
 
-  emptyState: { alignItems: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 12 },
+  filtresScroll: { marginHorizontal: -Spacing.md, paddingHorizontal: Spacing.md },
+  filtrePill: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, marginRight: 7 },
+  filtrePillText: { fontSize: 12, fontWeight: '700' },
 
-  formFieldRow: { flexDirection: 'row', gap: 10 },
+  content: { paddingHorizontal: Spacing.md, paddingTop: 8 },
 
-  listingCard: { borderRadius: Radius.md, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
-  listingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  listingTitle: { fontSize: 14, fontWeight: '800' },
-  listingCrop: { fontSize: 11, fontWeight: '700' },
-  listingPrice: { fontSize: 15, fontWeight: '900' },
-  listingDesc: { fontSize: 12, lineHeight: 17 },
-  listingFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.04)', paddingTop: 8 },
-  listingStock: { fontSize: 11, fontWeight: '600' },
-  listingLoc: { fontSize: 10 },
+  iaSection: { borderRadius: Radius.lg, borderWidth: 1, padding: 14, marginBottom: 16, gap: 12 },
+  iaSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iaIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  iaSectionTitle: { fontSize: 14, fontWeight: '800' },
+  iaLoading: { alignItems: 'center', paddingVertical: 12 },
+  iaLoadingText: { fontSize: 12 },
 
-  buyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  conseilItem: { borderLeftWidth: 3, paddingLeft: 12, gap: 4 },
+  conseilTitre: { fontSize: 13, fontWeight: '800' },
+  conseilTexte: { fontSize: 12, lineHeight: 17 },
+  conseilAction: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  conseilActionText: { fontSize: 11, fontWeight: '700' },
 
-  fab: { position: 'absolute', bottom: 20, right: 20, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
-  fabText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  sectionLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 10, marginTop: 4 },
+
+  fab: { position: 'absolute', bottom: 24, right: 20, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 28, paddingHorizontal: 20, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 8 },
+  fabText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: Radius.md, borderWidth: 1, padding: 10, marginBottom: 8 },
+  errorBannerText: { flex: 1, fontSize: 11, fontWeight: '600' },
 });

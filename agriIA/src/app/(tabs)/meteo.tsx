@@ -66,20 +66,27 @@ const PREVISIONS_FALLBACK: PrevisionJour[] = [
 ];
 
 // ── Récupérer météo réelle ────────────────────────────────────────────────────
-async function fetchMeteoReelle(): Promise<{ current: WeatherData; previsions: PrevisionJour[] }> {
+interface MeteoResult {
+  current: WeatherData;
+  previsions: PrevisionJour[];
+  isFallback: boolean;
+  error?: string;
+}
+
+async function fetchMeteoReelle(): Promise<MeteoResult> {
   try {
-    // Données en temps réel
     const [currentRes, forecastRes, uvRes] = await Promise.all([
       fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${LAT}&lon=${LON}&appid=${OWM_KEY}&units=metric&lang=fr`),
       fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${LAT}&lon=${LON}&appid=${OWM_KEY}&units=metric&lang=fr&cnt=40`),
       fetch(`https://api.openweathermap.org/data/2.5/uvi?lat=${LAT}&lon=${LON}&appid=${OWM_KEY}`),
     ]);
 
-    if (!currentRes.ok) throw new Error('API unavailable');
+    if (!currentRes.ok) throw new Error(`Météo API : ${currentRes.status} ${currentRes.statusText}`);
+    if (!forecastRes.ok) throw new Error(`Prévisions API : ${forecastRes.status} ${forecastRes.statusText}`);
 
     const curr = await currentRes.json();
     const forecast = await forecastRes.json();
-    const uvi = await uvRes.json();
+    const uvi = uvRes.ok ? await uvRes.json() : { value: null };
 
     // Mapper les icônes OWM → Ionicons
     function owmToIon(code: string): string {
@@ -133,14 +140,28 @@ async function fetchMeteoReelle(): Promise<{ current: WeatherData; previsions: P
     });
 
     const previsions = Object.values(joursMap).slice(1, 6);
-    return { current, previsions };
-  } catch {
-    return { current: METEO_FALLBACK, previsions: PREVISIONS_FALLBACK };
+    return { current, previsions, isFallback: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur réseau inconnue';
+    console.warn('[Météo] Échec du chargement :', message);
+    return { current: METEO_FALLBACK, previsions: PREVISIONS_FALLBACK, isFallback: true, error: message };
   }
 }
 
 // ── Conseils agricoles via Gemini ─────────────────────────────────────────────
-async function getConseilsAgricoles(meteo: WeatherData): Promise<ConseilAgri[]> {
+interface ConseilsResult {
+  conseils: ConseilAgri[];
+  isFallback: boolean;
+  error?: string;
+}
+
+async function getConseilsAgricoles(meteo: WeatherData): Promise<ConseilsResult> {
+  const fallback: ConseilAgri[] = [
+    { type: 'arrosage', titre: 'Arrosage conseillé', texte: `Humidité à ${meteo.humidite}%. ${meteo.humidite < 65 ? 'Irriguez vos cultures sensibles.' : 'Arrosage non urgent.'}`, emoji: '💧', couleur: '#3498db' },
+    { type: 'traitement', titre: 'Traitements phytosanitaires', texte: `${meteo.vent < 15 ? 'Vent faible — bonne conditions pour les traitements.' : 'Vent fort — évitez les traitements aériens.'}`, emoji: '🌿', couleur: '#27ae60' },
+    { type: 'recolte', titre: 'Fenêtre de récolte', texte: `${meteo.pluie < 30 ? 'Bonne fenêtre pour récolter et sécher vos cultures.' : 'Pluies probables — évitez la récolte aujourd\'hui.'}`, emoji: '🌾', couleur: '#f59e0b' },
+  ];
+
   const prompt = `Tu es un expert en agriculture tropicale camerounaise.
 Météo actuelle à Yaoundé :
 - Température: ${meteo.temp}°C (ressenti ${meteo.tempRessentie}°C)
@@ -162,17 +183,23 @@ Réponds UNIQUEMENT en JSON valide (sans markdown) :
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       }
     );
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error(`Gemini API : ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Réponse Gemini vide ou inattendue');
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [
-      { type: 'arrosage', titre: 'Arrosage conseillé', texte: `Humidité à ${meteo.humidite}%. ${meteo.humidite < 65 ? 'Irriguez vos cultures sensibles.' : 'Arrosage non urgent.'}`, emoji: '💧', couleur: '#3498db' },
-      { type: 'traitement', titre: 'Traitements phytosanitaires', texte: `${meteo.vent < 15 ? 'Vent faible — bonne conditions pour les traitements.' : 'Vent fort — évitez les traitements aériens.'}`, emoji: '🌿', couleur: '#27ae60' },
-      { type: 'recolte', titre: 'Fenêtre de récolte', texte: `${meteo.pluie < 30 ? 'Bonne fenêtre pour récolter et sécher vos cultures.' : 'Pluies probables — évitez la récolte aujourd\'hui.'}`, emoji: '🌾', couleur: '#f59e0b' },
-    ];
+    let parsed: ConseilAgri[];
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      throw new Error('Réponse Gemini non-JSON');
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Format de réponse Gemini invalide');
+    return { conseils: parsed, isFallback: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur réseau inconnue';
+    console.warn('[Conseils Météo IA] Échec :', message);
+    return { conseils: fallback, isFallback: true, error: message };
   }
 }
 
@@ -278,6 +305,8 @@ export default function MeteoScreen() {
   const [loadingIA, setLoadingIA] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [onglet, setOnglet] = useState<'auj' | 'semaine' | 'conseils'>('auj');
+  const [meteoError, setMeteoError] = useState<string | null>(null);
+  const [conseilsError, setConseilsError] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -294,22 +323,43 @@ export default function MeteoScreen() {
   }, [loading]);
 
   async function chargerTout() {
-    setLoading(true);
-    const { current, previsions: prev } = await fetchMeteoReelle();
-    setMeteo(current);
-    setPrevisions(prev);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setMeteoError(null);
+      const result = await fetchMeteoReelle();
+      setMeteo(result.current);
+      setPrevisions(result.previsions);
+      if (result.isFallback) setMeteoError(result.error ?? 'Données hors-ligne');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inattendue';
+      console.warn('[Météo] chargerTout :', msg);
+      setMeteoError(msg);
+    } finally {
+      setLoading(false);
+    }
 
-    setLoadingIA(true);
-    const c = await getConseilsAgricoles(current);
-    setConseils(c);
-    setLoadingIA(false);
+    try {
+      setLoadingIA(true);
+      setConseilsError(null);
+      const result = await getConseilsAgricoles(meteo);
+      setConseils(result.conseils);
+      if (result.isFallback) setConseilsError(result.error ?? 'Conseils hors-ligne');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inattendue';
+      console.warn('[Conseils Météo] chargerTout :', msg);
+      setConseilsError(msg);
+    } finally {
+      setLoadingIA(false);
+    }
   }
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await chargerTout();
-    setRefreshing(false);
+    try {
+      await chargerTout();
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   // Fluctuation live
@@ -372,6 +422,18 @@ export default function MeteoScreen() {
           </View>
         ) : (
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+
+            {meteoError && (
+              <View style={[s.errorBanner, { backgroundColor: `${colors.danger}12`, borderColor: `${colors.danger}30` }]}>
+                <Ionicons name="cloud-offline-outline" size={16} color={colors.danger} />
+                <Text style={[s.errorBannerText, { color: colors.danger }]}>
+                  Données hors-ligne — {meteoError}
+                </Text>
+                <TouchableOpacity onPress={onRefresh}>
+                  <Ionicons name="refresh-outline" size={16} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* ─────────── ONGLET AUJOURD'HUI ─────────── */}
             {onglet === 'auj' && (
@@ -498,6 +560,15 @@ export default function MeteoScreen() {
                   Basés sur la météo actuelle de {VILLE} — Gemini 2.5 Flash
                 </Text>
 
+                {conseilsError && (
+                  <View style={[s.errorBanner, { backgroundColor: `${colors.danger}12`, borderColor: `${colors.danger}30` }]}>
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+                    <Text style={[s.errorBannerText, { color: colors.danger }]}>
+                      Conseils hors-ligne — {conseilsError}
+                    </Text>
+                  </View>
+                )}
+
                 {loadingIA ? (
                   <View style={s.iaLoading}>
                     <ActivityIndicator color={G} />
@@ -607,4 +678,7 @@ const s = StyleSheet.create({
   conseilTexte: { fontSize: 13, lineHeight: 19, marginBottom: 8 },
   conseilType: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   conseilTypeText: { fontSize: 10, fontWeight: '700', textTransform: 'capitalize' },
+
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: Radius.md, borderWidth: 1, padding: 12, marginBottom: 12 },
+  errorBannerText: { flex: 1, fontSize: 12, fontWeight: '600' },
 });

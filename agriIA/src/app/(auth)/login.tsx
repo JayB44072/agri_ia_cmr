@@ -23,11 +23,21 @@ export default function Login(): React.JSX.Element {
   const handleLogin = async () => {
     setError('');
     if (!email || !password) { setError('Veuillez remplir tous les champs.'); return; }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { setError('Adresse e-mail invalide.'); return; }
+    if (password.length < 6) { setError('Le mot de passe doit contenir au moins 6 caractères.'); return; }
     setLoading(true);
-    const { error: err } = await signIn(email, password);
-    setLoading(false);
-    if (err) {
-      setError(err.message);
+    try {
+      const { error: err } = await signIn(email, password);
+      if (err) {
+        setError(err.message);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur de connexion inconnue';
+      console.warn('[Login] Échec :', msg);
+      setError('Erreur de connexion. Veuillez réessayer.');
+    } finally {
+      setLoading(false);
     }
   };
 

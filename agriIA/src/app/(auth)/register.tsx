@@ -384,28 +384,35 @@ export default function Register(): React.JSX.Element {
 
   const handleSubmit = async () => {
     setError('');
+    if (!validateStep()) return;
     setLoading(true);
+    try {
+      const profileData = {
+        city: form.ville,
+        region: form.region,
+        climate_zone: form.zoneClimatique,
+        crops: form.cultures,
+        superficie: form.superficie,
+        nb_parcelles: form.nbParcelles,
+        experience: form.experience,
+        objectives: form.objectif,
+        role: 'farmer' as const,
+      };
 
-    const profileData = {
-      city: form.ville,
-      region: form.region,
-      climate_zone: form.zoneClimatique,
-      crops: form.cultures,
-      superficie: form.superficie,
-      nb_parcelles: form.nbParcelles,
-      experience: form.experience,
-      objectives: form.objectif,
-      role: 'farmer' as const,
-    };
+      const { error: signUpError } = await signUp(form.email, form.password, form.nom, profileData);
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
 
-    const { error: signUpError } = await signUp(form.email, form.password, form.nom, profileData);
-    setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message);
-      return;
+      router.replace('/(tabs)');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      console.warn('[Register] Échec :', msg);
+      setError("Erreur lors de l'inscription. Veuillez réessayer.");
+    } finally {
+      setLoading(false);
     }
-
-    router.replace('/(tabs)');
   };
 
   const STEP_TITLES = [

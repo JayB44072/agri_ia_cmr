@@ -35,7 +35,21 @@ const OBJECTIFS = ['Augmenter mes revenus', 'Nourrir ma famille', 'Exporter mes 
 const NIVEAUX_EXP = ['Débutant (< 2 ans)', 'Intermédiaire (2-5 ans)', 'Confirmé (5-10 ans)', 'Expert (> 10 ans)'];
 
 // ── Gemini analyse profil ─────────────────────────────────────────────────────
-async function analyserProfil(profile: any): Promise<AnalyseIA> {
+const ANALYSE_FALLBACK: AnalyseIA = {
+  score: 68,
+  resume: 'Profil agriculteur équilibré avec bon potentiel de développement.',
+  pointsForts: ['Diversification des cultures', 'Bonne connaissance du terrain local'],
+  pointsAmeliorations: ['Adoption de techniques modernes d\'irrigation', 'Gestion des sols à améliorer'],
+  prochainsPas: ['Réaliser une analyse de sol complète', 'Rejoindre une coopérative agricole', 'Explorer les marchés d\'export'],
+};
+
+interface AnalyseResult {
+  analyse: AnalyseIA;
+  isFallback: boolean;
+  error?: string;
+}
+
+async function analyserProfil(profile: any): Promise<AnalyseResult> {
   const prompt = `Tu es un expert en agriculture africaine et développement rural.
 Voici le profil d'un agriculteur camerounais :
 - Nom: ${profile.nom}
@@ -65,19 +79,25 @@ Réponds UNIQUEMENT en JSON valide (sans markdown) :
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       }
     );
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error(`Gemini API : ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Réponse Gemini vide ou inattendue');
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return {
-      score: 68,
-      resume: 'Profil agriculteur équilibré avec bon potentiel de développement.',
-      pointsForts: ['Diversification des cultures', 'Bonne connaissance du terrain local'],
-      pointsAmeliorations: ['Adoption de techniques modernes d\'irrigation', 'Gestion des sols à améliorer'],
-      prochainsPas: ['Réaliser une analyse de sol complète', 'Rejoindre une coopérative agricole', 'Explorer les marchés d\'export'],
-    };
+    let parsed: AnalyseIA;
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      throw new Error('Réponse Gemini non-JSON');
+    }
+    if (typeof parsed.score !== 'number' || !Array.isArray(parsed.pointsForts)) {
+      throw new Error('Format de réponse Gemini invalide');
+    }
+    return { analyse: parsed, isFallback: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur réseau inconnue';
+    console.warn('[Profil IA] Échec :', message);
+    return { analyse: ANALYSE_FALLBACK, isFallback: true, error: message };
   }
 }
 
@@ -234,6 +254,7 @@ export default function ProfilScreen() {
 
   const [analyse, setAnalyse] = useState<AnalyseIA | null>(null);
   const [loadingIA, setLoadingIA] = useState(false);
+  const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(!profile);
   const [notifs, setNotifs] = useState(true);
   const [darkMode, setDarkMode] = useState(scheme === 'dark');
@@ -250,10 +271,20 @@ export default function ProfilScreen() {
 
   async function chargerAnalyse() {
     if (!profile) return;
-    setLoadingIA(true);
-    const a = await analyserProfil(profile);
-    setAnalyse(a);
-    setLoadingIA(false);
+    try {
+      setLoadingIA(true);
+      setAnalyseError(null);
+      const result = await analyserProfil(profile);
+      setAnalyse(result.analyse);
+      if (result.isFallback) setAnalyseError(result.error ?? 'Analyse hors-ligne');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inattendue';
+      console.warn('[Profil] chargerAnalyse :', msg);
+      setAnalyseError(msg);
+      setAnalyse(ANALYSE_FALLBACK);
+    } finally {
+      setLoadingIA(false);
+    }
   }
 
   async function sauvegarder() {
@@ -370,6 +401,15 @@ export default function ProfilScreen() {
                 <Ionicons name="refresh" size={14} color={G} />
               </TouchableOpacity>
             </View>
+
+            {analyseError && (
+              <View style={[s.errorBanner, { backgroundColor: `${colors.danger}12`, borderColor: `${colors.danger}30` }]}>
+                <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+                <Text style={[s.errorBannerText, { color: colors.danger }]}>
+                  Analyse hors-ligne — {analyseError}
+                </Text>
+              </View>
+            )}
 
             {loadingIA ? (
               <View style={s.iaLoading}>
@@ -600,4 +640,7 @@ const s = StyleSheet.create({
   settingsIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   settingsLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
   settingsSub: { fontSize: 11, marginTop: 1 },
+
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: Radius.md, borderWidth: 1, padding: 10, marginBottom: 8 },
+  errorBannerText: { flex: 1, fontSize: 11, fontWeight: '600' },
 });

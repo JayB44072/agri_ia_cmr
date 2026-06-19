@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { UserProvider } from '@/context/UserContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 function NavigationWrapper(): React.JSX.Element {
   const scheme = useColorScheme();
@@ -43,10 +44,12 @@ function NavigationWrapper(): React.JSX.Element {
 
 export default function RootLayout(): React.JSX.Element {
   return (
-    <UserProvider>
-      <AuthProvider>
-        <NavigationWrapper />
-      </AuthProvider>
-    </UserProvider>
+    <ErrorBoundary>
+      <UserProvider>
+        <AuthProvider>
+          <NavigationWrapper />
+        </AuthProvider>
+      </UserProvider>
+    </ErrorBoundary>
   );
 }
