@@ -21,8 +21,19 @@ export default function Login(): React.JSX.Element {
   const handleLogin = () => {
     setError('');
     if (!email || !password) { setError('Veuillez remplir tous les champs.'); return; }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { setError('Adresse e-mail invalide.'); return; }
+    if (password.length < 6) { setError('Le mot de passe doit contenir au moins 6 caractères.'); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); router.replace('/(tabs)/'); }, 1500);
+    try {
+      // TODO: replace with real auth API call
+      setTimeout(() => { setLoading(false); router.replace('/(tabs)/'); }, 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur de connexion inconnue';
+      console.warn('[Login] Échec :', msg);
+      setError('Erreur de connexion. Veuillez réessayer.');
+      setLoading(false);
+    }
   };
 
   return (

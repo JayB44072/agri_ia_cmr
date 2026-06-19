@@ -57,7 +57,19 @@ const PRODUITS_BASE: ProduitMarche[] = [
 // ── Gemini IA integration ─────────────────────────────────────────────────────
 const GEMINI_KEY = 'AIzaSyDemo_placeholder'; // À remplacer par votre clé
 
-async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilIA[]> {
+interface ConseilsMarcheResult {
+  conseils: ConseilIA[];
+  isFallback: boolean;
+  error?: string;
+}
+
+const CONSEILS_FALLBACK: ConseilIA[] = [
+  { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
+  { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
+  { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la COOPAGRI', priorite: 'moyenne' },
+];
+
+async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilsMarcheResult> {
   const top3Hausse = produits.filter(p => p.tendance === 'hausse').slice(0, 3);
   const top3Baisse = produits.filter(p => p.tendance === 'baisse').slice(0, 3);
 
@@ -79,17 +91,23 @@ Réponds UNIQUEMENT en JSON valide (sans markdown) avec ce format exact :
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
       }
     );
-    if (!res.ok) throw new Error('API error');
+    if (!res.ok) throw new Error(`Gemini API : ${res.status} ${res.statusText}`);
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Réponse Gemini vide ou inattendue');
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    return [
-      { titre: '🌽 Vendez votre maïs maintenant', texte: 'Le prix du maïs est en hausse de 8%. C\'est le bon moment pour commercialiser vos stocks.', action: 'Aller au marché de Mfoundi', priorite: 'haute' },
-      { titre: '🍅 Tomates : vendez vite', texte: 'Surplus sur le marché. Les prix continuent de baisser. Ne stockez pas trop longtemps.', action: 'Contacter les grossistes', priorite: 'haute' },
-      { titre: '🍫 Cacao à prix record', texte: 'Le cacao est à son plus haut niveau de l\'année. Excellente opportunité de vente.', action: 'Contacter la COOPAGRI', priorite: 'moyenne' },
-    ];
+    let parsed: ConseilIA[];
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      throw new Error('Réponse Gemini non-JSON');
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Format de réponse Gemini invalide');
+    return { conseils: parsed, isFallback: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur réseau inconnue';
+    console.warn('[Conseils Marché IA] Échec :', message);
+    return { conseils: CONSEILS_FALLBACK, isFallback: true, error: message };
   }
 }
 
@@ -319,6 +337,7 @@ export default function MarcheScreen() {
   const [conseils, setConseils] = useState<ConseilIA[]>([]);
   const [loadingIA, setLoadingIA] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [conseilsError, setConseilsError] = useState<string | null>(null);
   const [produitSelectionne, setProduitSelectionne] = useState<ProduitMarche | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -330,16 +349,29 @@ export default function MarcheScreen() {
   }, []);
 
   async function chargerConseils() {
-    setLoadingIA(true);
-    const c = await getConseilsGemini(produits);
-    setConseils(c);
-    setLoadingIA(false);
+    try {
+      setLoadingIA(true);
+      setConseilsError(null);
+      const result = await getConseilsGemini(produits);
+      setConseils(result.conseils);
+      if (result.isFallback) setConseilsError(result.error ?? 'Conseils hors-ligne');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inattendue';
+      console.warn('[Marché] chargerConseils :', msg);
+      setConseilsError(msg);
+      setConseils(CONSEILS_FALLBACK);
+    } finally {
+      setLoadingIA(false);
+    }
   }
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await chargerConseils();
-    setRefreshing(false);
+    try {
+      await chargerConseils();
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   const produitsFiltres = produits.filter(p => {
@@ -434,6 +466,15 @@ export default function MarcheScreen() {
             {loadingIA && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 'auto' }} />}
           </View>
 
+          {conseilsError && (
+            <View style={[s.errorBanner, { backgroundColor: `${colors.danger}12`, borderColor: `${colors.danger}30` }]}>
+              <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+              <Text style={[s.errorBannerText, { color: colors.danger }]}>
+                Conseils hors-ligne — {conseilsError}
+              </Text>
+            </View>
+          )}
+
           {loadingIA ? (
             <View style={s.iaLoading}>
               <Text style={[s.iaLoadingText, { color: colors.textSecondary }]}>Analyse des prix en cours...</Text>
@@ -525,4 +566,7 @@ const s = StyleSheet.create({
 
   fab: { position: 'absolute', bottom: 24, right: 20, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 28, paddingHorizontal: 20, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 8 },
   fabText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: Radius.md, borderWidth: 1, padding: 10, marginBottom: 8 },
+  errorBannerText: { flex: 1, fontSize: 11, fontWeight: '600' },
 });
