@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useUser } from '@/context/UserContext';
+import { useAuth } from '@/context/AuthContext';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const G      = Colors.splash.green;
@@ -344,6 +345,7 @@ const oc = StyleSheet.create({
 // ── Composant principal ───────────────────────────────────────────────────────
 export default function Register(): React.JSX.Element {
   const { setProfile } = useUser();
+  const { signUp } = useAuth();
   const [step, setStep]         = useState(0);
   const [form, setForm]         = useState<FormData>(INITIAL_FORM);
   const [showPass, setShowPass] = useState(false);
@@ -380,15 +382,30 @@ export default function Register(): React.JSX.Element {
   const nextStep = () => { if (!validateStep()) return; if (step < TOTAL_STEPS - 1) setStep(s => s + 1); };
   const prevStep = () => { setError(''); if (step > 0) setStep(s => s - 1); };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    setError('');
     setLoading(true);
-    setProfile({
-      nom: form.nom, ville: form.ville, region: form.region,
-      zoneClimatique: form.zoneClimatique, cultures: form.cultures,
-      superficie: form.superficie, nbParcelles: form.nbParcelles,
-      objectif: form.objectif, experience: form.experience, defis: form.defis,
-    });
-    setTimeout(() => { setLoading(false); router.replace('/(tabs)'); }, 2000);
+
+    const profileData = {
+      city: form.ville,
+      region: form.region,
+      climate_zone: form.zoneClimatique,
+      crops: form.cultures,
+      superficie: form.superficie,
+      nb_parcelles: form.nbParcelles,
+      experience: form.experience,
+      objectives: form.objectif,
+      role: 'farmer' as const,
+    };
+
+    const { error: signUpError } = await signUp(form.email, form.password, form.nom, profileData);
+    setLoading(false);
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    router.replace('/(tabs)');
   };
 
   const STEP_TITLES = [

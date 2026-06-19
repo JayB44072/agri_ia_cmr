@@ -22,11 +22,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
-  { name: 'index',     title: 'Accueil',   icon: 'home-outline' as const,        iconFilled: 'home' as const },
-  { name: 'parcelles', title: 'Parcelles', icon: 'map-outline' as const,          iconFilled: 'map' as const },
-  { name: 'marche',    title: 'Marché',    icon: 'storefront-outline' as const,   iconFilled: 'storefront' as const },
-  { name: 'meteo',     title: 'Météo',     icon: 'partly-sunny-outline' as const, iconFilled: 'partly-sunny' as const },
-  { name: 'profil',    title: 'Profil',    icon: 'person-outline' as const,       iconFilled: 'person' as const },
+  { name: 'index',      title: 'Accueil',    icon: 'home-outline' as const,        iconFilled: 'home' as const },
+  { name: 'parcelles',  title: 'Parcelles',  icon: 'map-outline' as const,          iconFilled: 'map' as const },
+  { name: 'diagnostic', title: 'Diagnostic', icon: 'scan-outline' as const,         iconFilled: 'scan' as const },
+  { name: 'marche',     title: 'Marché',     icon: 'storefront-outline' as const,   iconFilled: 'storefront' as const },
+  { name: 'meteo',      title: 'Météo',      icon: 'partly-sunny-outline' as const, iconFilled: 'partly-sunny' as const },
+  { name: 'profil',     title: 'Profil',     icon: 'person-outline' as const,       iconFilled: 'person' as const },
 ];
 
 const TAB_COUNT = TABS.length;

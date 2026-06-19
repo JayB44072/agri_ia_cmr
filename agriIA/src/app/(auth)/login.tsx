@@ -7,6 +7,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
 
 const C = Colors.light;
 const G = Colors.splash.green;
@@ -17,13 +18,45 @@ export default function Login(): React.JSX.Element {
   const [loading, setLoading]   = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [error, setError]       = useState('');
+  const { signIn, signInWithGoogle, resetPassword } = useAuth();
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
     if (!email || !password) { setError('Veuillez remplir tous les champs.'); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); router.replace('/(tabs)/'); }, 1500);
+    const { error: err } = await signIn(email, password);
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+    }
   };
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    setLoading(true);
+    const { error: err } = await signInWithGoogle();
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    if (!email) {
+      setError('Veuillez saisir votre adresse e-mail pour réinitialiser le mot de passe.');
+      return;
+    }
+    setLoading(true);
+    const { error: err } = await resetPassword(email);
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+    } else {
+      alert('Un e-mail de réinitialisation a été envoyé.');
+    }
+  };
+
 
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -92,7 +125,7 @@ export default function Login(): React.JSX.Element {
           </View>
 
           {/* Mot de passe oublié */}
-          <TouchableOpacity style={s.forgotBtn}>
+          <TouchableOpacity style={s.forgotBtn} onPress={handleForgotPassword}>
             <Text style={s.forgotText}>Mot de passe oublié ?</Text>
           </TouchableOpacity>
 
@@ -117,6 +150,19 @@ export default function Login(): React.JSX.Element {
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </View>
             )}
+          </TouchableOpacity>
+
+          {/* Bouton Google */}
+          <TouchableOpacity
+            style={[s.googleBtn, loading && { opacity: 0.75 }]}
+            activeOpacity={0.82}
+            onPress={handleGoogleLogin}
+            disabled={loading}
+          >
+            <View style={s.btnInner}>
+              <Ionicons name="logo-google" size={16} color="#df4930" />
+              <Text style={s.googleBtnText}>Continuer avec Google</Text>
+            </View>
           </TouchableOpacity>
 
           {/* Divider */}
@@ -239,6 +285,8 @@ const s = StyleSheet.create({
   dividerText:     { fontSize: 12, color: '#4a7a55' },
   registerBtn:     { borderWidth: 1.5, borderColor: G, borderRadius: Radius.lg, paddingVertical: 14, alignItems: 'center' },
   registerBtnText: { fontSize: 15, fontWeight: '700', color: G },
+  googleBtn:       { borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)', borderRadius: Radius.lg, paddingVertical: 14, alignItems: 'center', marginBottom: Spacing.md, backgroundColor: '#fff' },
+  googleBtnText:   { fontSize: 15, fontWeight: '700', color: '#555' },
 
   footerRow: { flexDirection: 'row', alignItems: 'center' },
   footer:    { fontSize: 11, color: '#4a7a55' },

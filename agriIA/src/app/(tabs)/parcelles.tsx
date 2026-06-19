@@ -8,13 +8,68 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PARCELLES_INIT, Parcelle } from '@/components/data/parcellesData';
+import { PARCELLES_INIT, Parcelle, EMOJIS_CULTURE, StatutParcelle } from '@/components/data/parcellesData';
 import ParcelleHeader      from '@/components/parcelles/parcelleHeader';
 import ParcelleMap         from '@/components/parcelles/parcelleMap';
 import ParcelleStatsBar    from '@/components/parcelles/ParcelleStatsBar';
 import ParcelleListItem    from '@/components/parcelles/ParcelleListItem';
 import ParcelleDetailModal from '@/components/parcelles/ParcelleDetailModal';
 import ParcelleFormModal   from '@/components/parcelles/ParcelleFormModal';
+import { useAuth } from '@/context/AuthContext';
+import { getPlotsByOwner, createPlot, updatePlot, deletePlot, PlotRow } from '@/services/database/plots';
+import { useEffect } from 'react';
+
+function mapPlotRowToParcelle(row: PlotRow): Parcelle {
+  const healthToStatut: Record<string, StatutParcelle> = {
+    ok: 'ok',
+    warning: 'warning',
+    critical: 'critical',
+  };
+  const statut = healthToStatut[row.health_status] || 'ok';
+  
+  const colors = {
+    ok: '#22c55e',
+    warning: '#f97316',
+    critical: '#ef4444',
+  };
+
+  const crop = row.crop;
+  const emoji = EMOJIS_CULTURE[crop] || '🌱';
+
+  return {
+    id: row.id,
+    nom: row.name,
+    culture: crop,
+    emoji,
+    surface: Number(row.area),
+    stade: 'Croissance',
+    sante: statut === 'ok' ? 90 : statut === 'warning' ? 70 : 45,
+    rendementPrevu: 4.5,
+    dernierArrosage: 'Il y a 3h',
+    prochaineTache: statut === 'ok' ? 'Surveiller croissance' : 'Vérifier capteurs',
+    prioriteTache: statut === 'ok' ? 'conseil' : 'urgent',
+    couleur: colors[statut],
+    statut,
+    typeSol: row.soil_type || 'Argileux',
+    localisation: {
+      ville: 'Yaoundé',
+      region: 'Centre',
+      lat: Number(row.latitude) || 3.84,
+      lng: Number(row.longitude) || 11.50,
+    },
+    capteur: {
+      humidite: statut === 'ok' ? 68 : statut === 'warning' ? 52 : 39,
+      temperature: 28.4,
+      ph: 6.5,
+      azote: 15,
+      statut: statut === 'ok' ? 'ok' : statut === 'warning' ? 'attention' : 'critique',
+    },
+    mapX: 20 + Math.random() * 60,
+    mapY: 20 + Math.random() * 60,
+    lat: Number(row.latitude) || 3.84,
+    lng: Number(row.longitude) || 11.50,
+  };
+}
 
 // ← aligné sur ParcelleStatsBar
 type FilterType = 'toutes' | 'ok' | 'warning' | 'critical';
@@ -26,8 +81,27 @@ export default function ParcellesScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const G      = Colors.splash.green;
 
-  const [parcelles, setParcelles]       = useState<Parcelle[]>(PARCELLES_INIT);
+  const { user } = useAuth();
+  const [parcelles, setParcelles]       = useState<Parcelle[]>([]);
   const [filter, setFilter]             = useState<FilterType>('toutes');
+
+  const loadPlots = useCallback(async () => {
+    if (!user) return;
+    setRefreshing(true);
+    const { data, error } = await getPlotsByOwner(user.id);
+    setRefreshing(false);
+    if (error) {
+      alert("Erreur de chargement des parcelles: " + error.message);
+      return;
+    }
+    if (data) {
+      setParcelles(data.map(mapPlotRowToParcelle));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadPlots();
+  }, [loadPlots]);
   const [search, setSearch]             = useState('');
   const [selectedParcelle, setSelected] = useState<Parcelle | null>(null);
   const [editParcelle, setEditParcelle] = useState<Parcelle | null>(null);
@@ -70,9 +144,8 @@ export default function ParcellesScreen(): React.JSX.Element {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1400);
-  }, []);
+    loadPlots();
+  }, [loadPlots]);
 
   const handleSelectParcelle = (p: Parcelle) => { setSelected(p); setShowDetail(true); };
 
@@ -90,44 +163,52 @@ export default function ParcellesScreen(): React.JSX.Element {
     setTimeout(() => { setEditParcelle(p); setShowForm(true); }, 350);
   };
 
-  const handleSave = (data: Partial<Parcelle>) => {
+  const handleSave = async (data: Partial<Parcelle>) => {
+    if (!user) return;
     if (editParcelle) {
-      setParcelles(prev => prev.map(p => p.id === editParcelle.id ? { ...p, ...data } : p));
-    } else {
-      const newParcelle: Parcelle = {
-        id:              `P${Date.now()}`,
-        nom:             data.nom      ?? 'Nouvelle parcelle',
-        culture:         data.culture  ?? 'Maïs',
-        emoji:           data.emoji    ?? '🌱',
-        surface:         data.surface  ?? 1,
-        stade:           'Semis',
-        sante:           70,
-        rendementPrevu:  2.5 + Math.random() * 2,
-        dernierArrosage: 'Jamais',
-        prochaineTache:  'Analyse du sol recommandée',
-        prioriteTache:   'conseil',
-        couleur:         '#3cb95a',
-        statut:          'ok',
-        typeSol:         data.typeSol ?? 'Argileux',
-        localisation:    data.localisation ?? { ville: '', region: '', lat: 3.85, lng: 11.52 },
-        capteur: {
-          humidite:    65 + Math.random() * 10,
-          temperature: 24 + Math.random() * 4,
-          ph:          6.2 + Math.random() * 0.6,
-          azote:       15 + Math.random() * 10,
-          statut:      'ok',
-        },
-        mapX: 20 + Math.random() * 60,
-        mapY: 20 + Math.random() * 60,
-        lat:  3.84 + Math.random() * 0.02,
-        lng:  11.50 + Math.random() * 0.02,
+      const updatedRow = {
+        name: data.nom ?? editParcelle.nom,
+        crop: data.culture ?? editParcelle.culture,
+        area: data.surface ?? editParcelle.surface,
+        soil_type: data.typeSol ?? editParcelle.typeSol ?? 'Argileux',
+        latitude: data.localisation?.lat ?? editParcelle.localisation?.lat ?? 3.84,
+        longitude: data.localisation?.lng ?? editParcelle.localisation?.lng ?? 11.50,
+        health_status: (data.statut ?? editParcelle.statut) as any,
       };
-      setParcelles(prev => [newParcelle, ...prev]);
+      const { error } = await updatePlot(editParcelle.id, updatedRow);
+      if (error) {
+        alert("Erreur de mise à jour: " + error.message);
+        return;
+      }
+      loadPlots();
+    } else {
+      const newRow = {
+        owner_id: user.id,
+        name: data.nom ?? 'Nouvelle parcelle',
+        crop: data.culture ?? 'Maïs',
+        area: data.surface ?? 1.0,
+        soil_type: data.typeSol ?? 'Argileux',
+        latitude: data.localisation?.lat ?? 3.84,
+        longitude: data.localisation?.lng ?? 11.50,
+        health_status: 'ok' as const,
+      };
+      const { error } = await createPlot(newRow);
+      if (error) {
+        alert("Erreur d'ajout: " + error.message);
+        return;
+      }
+      loadPlots();
     }
+    setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
-    setParcelles(prev => prev.filter(p => p.id !== id));
+  const handleDelete = async (id: string) => {
+    const { error } = await deletePlot(id);
+    if (error) {
+      alert("Erreur de suppression: " + error.message);
+      return;
+    }
+    loadPlots();
     setShowDetail(false);
   };
 

@@ -11,11 +11,12 @@ export interface UserProfile {
   objectif: string;
   experience: string;
   defis: string[];
+  avatarUrl?: string | null;
 }
 
 interface UserContextType {
   profile: UserProfile | null;
-  setProfile: (p: UserProfile) => void;
+  setProfile: (p: UserProfile | null) => void;
 }
 
 const UserContext = createContext<UserContextType>({
