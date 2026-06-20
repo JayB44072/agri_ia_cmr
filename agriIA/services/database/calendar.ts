@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 
 export type CalendarEventType = 'semis' | 'arrosage' | 'fertilisation' | 'traitement' | 'récolte';

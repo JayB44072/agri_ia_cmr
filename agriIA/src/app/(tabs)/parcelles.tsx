@@ -16,7 +16,7 @@ import ParcelleListItem    from '@/components/parcelles/ParcelleListItem';
 import ParcelleDetailModal from '@/components/parcelles/ParcelleDetailModal';
 import ParcelleFormModal   from '@/components/parcelles/ParcelleFormModal';
 import { useAuth } from '@/context/AuthContext';
-import { getPlotsByOwner, createPlot, updatePlot, deletePlot, PlotRow } from '@/services/database/plots';
+import { getPlotsByOwner, createPlot, updatePlot, deletePlot, PlotRow } from '../../services/database/plots';
 import { useEffect } from 'react';
 
 function mapPlotRowToParcelle(row: PlotRow): Parcelle {

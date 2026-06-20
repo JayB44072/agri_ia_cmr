@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Animated, Modal, ActivityIndicator, Switch, Image,
+  TextInput, Animated, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-import { useColorScheme } from 'react-native';
+import { useAppTheme } from '@/context/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
 import { upsertProfile, ProfileRow } from '@/services/database/profiles';
@@ -168,11 +169,11 @@ const sb = StyleSheet.create({
 
 // ── Écran principal ───────────────────────────────────────────────────────────
 export default function ProfilScreen() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const { isDark } = useAppTheme();
   const colors = (isDark ? Colors.dark : Colors.light) as typeof Colors.light | typeof Colors.dark;
   const { profile, setProfile } = useUser();
   const { user, signOut } = useAuth();
+  const router = useRouter();
   const G = colors.primary;
 
   // Form state
@@ -232,11 +233,9 @@ export default function ProfilScreen() {
     setLoadingIA(false);
   };
 
-  const [analyse, setAnalyse] = useState<AnalyseIA | null>(null);
+  const [analyse, setAnalyse]   = useState<AnalyseIA | null>(null);
   const [loadingIA, setLoadingIA] = useState(false);
-  const [editMode, setEditMode] = useState(!profile);
-  const [notifs, setNotifs] = useState(true);
-  const [darkMode, setDarkMode] = useState(scheme === 'dark');
+  const [editMode, setEditMode]   = useState(!profile);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
   const scoreAnim = useRef(new Animated.Value(0)).current;
@@ -499,31 +498,16 @@ export default function ProfilScreen() {
           </View>
         )}
 
-        {/* ── Paramètres ── */}
+        {/* ── Liens rapides ── */}
         {!editMode && (
           <View style={[s.settingsCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-            <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>PARAMÈTRES</Text>
+            <Text style={[s.sectionLabel, { color: colors.textSecondary }]}>ACTIONS RAPIDES</Text>
 
-            {[
-              { label: 'Notifications push', sub: 'Alertes météo et IA', icon: 'notifications-outline' as const, value: notifs, onToggle: setNotifs, color: G },
-            ].map((item, i) => (
-              <View key={i} style={s.settingsRow}>
-                <View style={[s.settingsIcon, { backgroundColor: `${item.color}15` }]}>
-                  <Ionicons name={item.icon} size={16} color={item.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.settingsLabel, { color: colors.text }]}>{item.label}</Text>
-                  <Text style={[s.settingsSub, { color: colors.textSecondary }]}>{item.sub}</Text>
-                </View>
-                <Switch value={item.value} onValueChange={item.onToggle} trackColor={{ true: G }} />
+            <TouchableOpacity style={[s.settingsRow, s.settingsBtn]} onPress={() => router.push('/(tabs)/settings' as any)}>
+              <View style={[s.settingsIcon, { backgroundColor: `${G}15` }]}>
+                <Ionicons name="settings-outline" size={16} color={G} />
               </View>
-            ))}
-
-            <TouchableOpacity style={[s.settingsRow, s.settingsBtn]}>
-              <View style={[s.settingsIcon, { backgroundColor: `${colors.info}15` }]}>
-                <Ionicons name="help-circle-outline" size={16} color={colors.info} />
-              </View>
-              <Text style={[s.settingsLabel, { color: colors.text }]}>Aide & Support</Text>
+              <Text style={[s.settingsLabel, { color: colors.text }]}>Paramètres</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
 

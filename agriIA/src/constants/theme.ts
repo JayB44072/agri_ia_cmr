@@ -1,5 +1,6 @@
 import '@/global.css';
-import { Platform, useColorScheme } from 'react-native';
+import { Platform } from 'react-native';
+import { useAppTheme } from '@/context/ThemeContext';
 
 export const Colors = {
   light: {
@@ -78,7 +79,6 @@ export const BottomTabInset  = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
 
 export function useThemeColors() {
-  const scheme = useColorScheme();
-  const isDark  = scheme === 'dark';
+  const { isDark } = useAppTheme();
   return { colors: Colors[isDark ? 'dark' : 'light'], isDark } as const;
 }

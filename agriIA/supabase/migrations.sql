@@ -4,7 +4,7 @@
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
-
+create extension if not exists "pgcrypto";
 -- ==========================================
 -- 1. PROFILES TABLE
 -- ==========================================
@@ -26,6 +26,12 @@ create table public.profiles (
 alter table public.profiles enable row level security;
 
 -- Profile RLS Policies
+create policy "Users can update their own diagnostics"
+  on public.diagnostics for update
+  to authenticated
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
 create policy "Public profiles are viewable by authenticated users" 
   on public.profiles for select 
   to authenticated 
@@ -141,7 +147,7 @@ create policy "Users can delete their own diagnostics"
 create table public.calendar_events (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid references auth.users on delete cascade not null,
-  type text check (type in ('semis', 'arrosage', 'fertilisation', 'traitement', 'récolte')) not null,
+  type text check (type in ('semis', 'arrosage', 'fertilisation', 'traitement', 'recolte')) not null,
   title text not null,
   description text,
   event_date date not null,
@@ -561,10 +567,11 @@ create policy "Users can insert sensor data of their plots"
 -- NOTE: Storage buckets need configuration in Supabase dashboard or SQL if supported.
 -- The following inserts configuration into storage.buckets table:
 -- ==========================================
-insert into storage.buckets (id, name, public) values ('profiles', 'profiles', true) on conflict (id) do nothing;
-insert into storage.buckets (id, name, public) values ('plots', 'plots', true) on conflict (id) do nothing;
-insert into storage.buckets (id, name, public) values ('diagnostics', 'diagnostics', true) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('profiles', 'profiles', false) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('plots', 'plots', false) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('diagnostics', 'diagnostics', false) on conflict (id) do nothing;
 
+alter table storage.objects enable row level security;
 -- Storage RLS Policies
 create policy "Public can view profiles" on storage.objects for select using (bucket_id = 'profiles');
 create policy "Authenticated users can upload to profiles" on storage.objects for insert to authenticated with check (bucket_id = 'profiles' and (storage.foldername(name))[1] = auth.uid()::text);
@@ -574,3 +581,31 @@ create policy "Authenticated users can upload to plots" on storage.objects for i
 
 create policy "Public can view diagnostics" on storage.objects for select using (bucket_id = 'diagnostics');
 create policy "Authenticated users can upload to diagnostics" on storage.objects for insert to authenticated with check (bucket_id = 'diagnostics' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ==========================================
+-- PUSH TOKENS TABLE
+-- ==========================================
+create table public.push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users on delete cascade not null,
+  token text not null,
+  device_id text not null,
+  platform text check (platform in ('ios', 'android', 'web')) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique (user_id, device_id)
+);
+
+-- Enable RLS
+alter table public.push_tokens enable row level security;
+
+-- Push Tokens RLS Policies
+create policy "Users can view their own push tokens"
+  on public.push_tokens for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy "Users can manage their own push tokens"
+  on public.push_tokens for all
+  to authenticated
+  using (auth.uid() = user_id);

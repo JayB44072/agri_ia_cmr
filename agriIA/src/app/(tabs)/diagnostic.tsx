@@ -19,10 +19,12 @@ import {
   getDiagnosticsByOwner,
   DiagnosticRow,
 } from '@/services/database/diagnostics';
+import { supabase } from '@/lib/supabase';
 
 const SCREEN_W = Dimensions.get('window').width;
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+// 🛡️ CORRECTION 1 : Suppression de la clé en dur. On utilise uniquement la variable d'environnement.
+const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
 interface GeminiAnalysisResult {
   disease: string;
@@ -31,6 +33,15 @@ interface GeminiAnalysisResult {
   treatment: string;
   preventive_actions: string[];
 }
+
+// 🛡️ CORRECTION 2a : Création d'un résultat de secours au cas où Gemini renvoie n'importe quoi
+const DEFAULT_FALLBACK: GeminiAnalysisResult = {
+  disease: "Erreur d'analyse IA",
+  confidence: 0,
+  causes: ["Le format de la réponse reçue était illisible ou incomplet."],
+  treatment: "Veuillez réessayer l'analyse avec une photo plus claire.",
+  preventive_actions: ["Vérifiez votre connexion internet et la qualité de l'image."]
+};
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -88,7 +99,7 @@ export default function DiagnosticScreen() {
   };
 
   const startAnalysis = async () => {
-    if (!imageUri || !user) return;
+    if (!imageUri || !user || !GEMINI_KEY) return;
     setLoading(true);
 
     try {
@@ -134,16 +145,35 @@ Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte expl
 
       const data = await res.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsedResult: GeminiAnalysisResult = JSON.parse(clean);
+      
+      let parsedResult: GeminiAnalysisResult;
+
+      // 🛡️ CORRECTION 2b : Try/Catch pour empêcher le crash si le JSON de Gemini est mal formé
+      try {
+        let clean = text.trim();
+        // Nettoyage renforcé des balises Markdown souvent générées par les IA
+        clean = clean.replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+        parsedResult = JSON.parse(clean);
+      } catch (parseError) {
+        console.error("Erreur de parsing JSON Gemini :", parseError, "Texte brut :", text);
+        parsedResult = DEFAULT_FALLBACK; // On applique le plan de secours au lieu de crasher
+      }
 
       // 3. Upload photo to Supabase Storage
-      const fileName = `${user.id}_diag_${Date.now()}.jpg`;
+      // 3. Upload photo to Supabase Storage (Création du dossier utilisateur pour respecter la RLS)
+      const fileName = `${user.id}/diag_${Date.now()}.jpg`;
       const { error: uploadError } = await uploadDiagnosticPhoto(imageUri, fileName);
       let storagePublicUrl = '';
       if (!uploadError) {
-        const { data: urlData } = await getPublicUrl('diagnostics', fileName);
-        storagePublicUrl = urlData?.publicUrl || '';
+        // On demande à Supabase une URL signée sécurisée
+        // Le deuxième paramètre (31536000) est la durée de validité en secondes (ici, 1 an pour être tranquille pour ta soutenance)
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('diagnostics')
+          .createSignedUrl(fileName, 31536000); 
+
+        if (!signedError && signedData) {
+          storagePublicUrl = signedData.signedUrl;
+        }
       }
 
       // 4. Save to public.diagnostics table
@@ -193,9 +223,21 @@ Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte expl
         contentContainerStyle={s.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHistory} tintColor={G} />}
       >
-        {/* Main interactive area */}
         <View style={[s.mainCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          {!imageUri ? (
+          
+          {/* 🛡️ CORRECTION 1b : Affichage d'une alerte UI si la clé est manquante */}
+          {!GEMINI_KEY ? (
+            <View style={s.emptyState}>
+              <View style={[s.emptyIconCircle, { backgroundColor: '#ef444415' }]}>
+                <Ionicons name="warning-outline" size={42} color="#ef4444" />
+              </View>
+              <Text style={[s.emptyTitle, { color: colors.text, textAlign: 'center' }]}>Service IA Indisponible</Text>
+              <Text style={[s.emptyText, { color: colors.textSecondary }]}>
+                La clé API Gemini est manquante. Veuillez configurer EXPO_PUBLIC_GEMINI_API_KEY dans votre environnement pour activer l'analyse.
+              </Text>
+            </View>
+          ) : !imageUri ? (
+            /* État normal de sélection d'image */
             <View style={s.emptyState}>
               <View style={[s.emptyIconCircle, { backgroundColor: `${G}15` }]}>
                 <Ionicons name="camera-outline" size={42} color={G} />
@@ -223,19 +265,24 @@ Réponds UNIQUEMENT en JSON valide (sans aucun markdown \`\`\`json ou texte expl
               {loading ? (
                 <View style={s.loadingBox}>
                   <ActivityIndicator size="large" color={G} />
-                  <Text style={[s.loadingText, { color: colors.text }]}>Analyse par l'IA AgriSmart en cours...</Text>
+                  <Text style={[s.loadingText, { color: colors.text }]}>Analyse par l'IA en cours...</Text>
                   <Text style={[s.loadingSub, { color: colors.textSecondary }]}>Nous détectons les agents pathogènes...</Text>
                 </View>
               ) : analysisResult ? (
                 <View style={s.resultBox}>
                   <View style={s.resultHeader}>
-                    <Ionicons name="checkmark-circle" size={26} color={colors.success} />
+                    {/* Icône d'erreur rouge si le fallback a été utilisé */}
+                    <Ionicons 
+                      name={analysisResult.disease.includes("Erreur") ? "warning" : "checkmark-circle"} 
+                      size={26} 
+                      color={analysisResult.disease.includes("Erreur") ? "#ef4444" : colors.success} 
+                    />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.resultTitle, { color: colors.text }]}>{analysisResult.disease}</Text>
                       <Text style={[s.resultConf, { color: colors.textSecondary }]}>Confiance : {analysisResult.confidence}%</Text>
                     </View>
-                    <View style={[s.confBadge, { backgroundColor: `${colors.success}18` }]}>
-                      <Text style={[s.confBadgeText, { color: colors.success }]}>Actif</Text>
+                    <View style={[s.confBadge, { backgroundColor: analysisResult.disease.includes("Erreur") ? '#ef444418' : `${colors.success}18` }]}>
+                      <Text style={[s.confBadgeText, { color: analysisResult.disease.includes("Erreur") ? '#ef4444' : colors.success }]}>Actif</Text>
                     </View>
                   </View>
 
@@ -433,4 +480,4 @@ const s = StyleSheet.create({
   modalImage: { width: '100%', height: 240, borderRadius: 12 },
   modalCloseBtn: { borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 16 },
   modalCloseText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-});
+} as any);

@@ -85,22 +85,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     let unsubscribe: (() => void) | null = null;
     async function bootstrap() {
       setLoading(true);
-      const { data } = await supabase.auth.getSession();
-      const currentSession = data.session;
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-      await loadProfile(currentSession?.user ?? null);
-      setLoading(false);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const currentSession = data.session;
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        await loadProfile(currentSession?.user ?? null);
+      } catch (e) {
+        console.warn('Auth bootstrap failed:', e);
+      } finally {
+        setLoading(false);
+      }
 
-      const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        await loadProfile(newSession?.user ?? null);
-      });
-      unsubscribe = () => listener?.subscription.unsubscribe();
+      try {
+        const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          await loadProfile(newSession?.user ?? null);
+        });
+        unsubscribe = () => listener?.subscription.unsubscribe();
+      } catch (e) {
+        console.warn('Auth listener failed:', e);
+      }
     }
 
-    bootstrap();
+    bootstrap().catch(() => setLoading(false));
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 

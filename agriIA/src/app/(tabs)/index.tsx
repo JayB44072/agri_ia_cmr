@@ -4,7 +4,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { useColorScheme } from 'react-native';
 import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
-import { getPlotsByOwner } from '@/services/database/plots';
+import { getPlotsByOwner } from '../../services/database/plots';
 import { getFinancesByOwner } from '@/services/database/finances';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import MeteoCard from '@/components/dashboard/MeteoCard';
