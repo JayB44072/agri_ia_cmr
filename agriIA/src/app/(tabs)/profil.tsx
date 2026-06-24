@@ -12,9 +12,12 @@ import { useUser } from '@/context/UserContext';
 import { useAuth } from '@/context/AuthContext';
 import { upsertProfile, ProfileRow } from '@/services/database/profiles';
 import { pickAndCompressImage, uploadProfileAvatar, getPublicUrl } from '@/services/storage/supabaseStorage';
+import { sanitizeForPrompt } from '@/utils/sanitize';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+import { ENV } from '@/config/env';
+
+const GEMINI_KEY = ENV.GEMINI_KEY;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface StatFerme {
@@ -37,15 +40,23 @@ const NIVEAUX_EXP = ['Débutant (< 2 ans)', 'Intermédiaire (2-5 ans)', 'Confirm
 
 // ── Gemini analyse profil ─────────────────────────────────────────────────────
 async function analyserProfil(profile: any): Promise<AnalyseIA> {
+  const nom = sanitizeForPrompt(profile.nom);
+  const zone = sanitizeForPrompt(profile.zoneClimatique);
+  const cultures = profile.cultures.map(sanitizeForPrompt).join(', ');
+  const superficie = sanitizeForPrompt(profile.superficie);
+  const nbParcelles = sanitizeForPrompt(profile.nbParcelles);
+  const experience = sanitizeForPrompt(profile.experience);
+  const objectif = sanitizeForPrompt(profile.objectif);
+
   const prompt = `Tu es un expert en agriculture africaine et développement rural.
 Voici le profil d'un agriculteur camerounais :
-- Nom: ${profile.nom}
-- Zone climatique: ${profile.zoneClimatique}
-- Cultures: ${profile.cultures.join(', ')}
-- Superficie: ${profile.superficie} ha
-- Nombre de parcelles: ${profile.nbParcelles}
-- Expérience: ${profile.experience}
-- Objectif principal: ${profile.objectif}
+- Nom: ${nom}
+- Zone climatique: ${zone}
+- Cultures: ${cultures}
+- Superficie: ${superficie} ha
+- Nombre de parcelles: ${nbParcelles}
+- Expérience: ${experience}
+- Objectif principal: ${objectif}
 
 Analyse ce profil et donne une évaluation agricole.
 Réponds UNIQUEMENT en JSON valide (sans markdown) :

@@ -9,9 +9,10 @@ import { useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ── Config APIs ───────────────────────────────────────────────────────────────
-// OpenWeatherMap (gratuit 1000 req/jour) : https://openweathermap.org/api
-const OWM_KEY = 'YOUR_OWM_KEY'; // Remplacez par votre clé OpenWeatherMap
-const GEMINI_KEY = 'YOUR_GEMINI_KEY'; // Remplacez par votre clé Gemini
+import { ENV } from '@/config/env';
+
+const OWM_KEY = ENV.OWM_KEY;
+const GEMINI_KEY = ENV.GEMINI_KEY;
 
 // Coordonnées Yaoundé, Cameroun
 const LAT = 3.848;

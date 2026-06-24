@@ -49,7 +49,10 @@ const PRODUITS_BASE: ProduitMarche[] = [
   { id:'p5', nom:'Cacao', emoji:'🍫', categorie:'cash', prixActuel:2800, unite:'kg', tendance:'hausse', variation:15, stock:'rare', vendeurs:4, conseil:'Prix historiquement hauts. Vendez rapidement !' },
 ];
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDemo_placeholder';
+// ── Gemini IA integration ─────────────────────────────────────────────────────
+import { ENV } from '@/config/env';
+
+const GEMINI_KEY = ENV.GEMINI_KEY;
 
 async function getConseilsGemini(produits: ProduitMarche[]): Promise<ConseilIA[]> {
   const top3Hausse = produits.filter(p => p.tendance === 'hausse').slice(0, 3);
